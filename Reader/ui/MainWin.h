@@ -16,6 +16,7 @@ public:
     ~MainWin();
 
     HWND hFindDlg();
+    bool handleShellNavigation(const MSG& message);
     static const wchar_t* className(HINSTANCE hInstance);
 
 protected:

@@ -43,6 +43,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_READER));
     while (GetMessage(&msg, nullptr, 0, 0))
     {
+        if (win.handleShellNavigation(msg)) continue;
         HWND hFindDlg = win.hFindDlg();
         if (!hFindDlg || !IsDialogMessage(hFindDlg, &msg))
         {

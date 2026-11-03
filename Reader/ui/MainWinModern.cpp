@@ -195,3 +195,28 @@ void MainWin::showMoreMenu()
     DestroyMenu(menu);
     if (command) SendMessage(m_hWnd, WM_COMMAND, command, 0);
 }
+
+// The main window has no dialog manager. Route Tab/Enter for its command bar
+// explicitly, without consuming reading arrows, editor tabs or modal keys.
+bool MainWin::handleShellNavigation(const MSG& message)
+{
+    if (message.message != WM_KEYDOWN || GetAncestor(message.hwnd, GA_ROOT) != m_hWnd
+        || (m_hEditCtrl && m_hEditCtrl->isEditing())) return false;
+    if (message.wParam == VK_RETURN)
+    {
+        wchar_t name[32]; GetClassNameW(message.hwnd, name, ARRAYSIZE(name));
+        if (!_wcsicmp(name, L"Button")) { SendMessage(message.hwnd, BM_CLICK, 0, 0); return true; }
+    }
+    if (message.wParam != VK_TAB) return false;
+    std::vector<HWND> order;
+    for (HWND window : {m_shellButtons[IDM_OPEN], m_shellButtons[IDM_VIEW], m_shellButtons[IDM_DISPLAY], m_shellButtons[IDM_UI_MORE],
+        m_hTreeView, m_hTreeMark, m_shellButtons[IDM_UI_FOCUS], m_shellButtons[IDM_UI_PREVIOUS], m_shellButtons[IDM_UI_NEXT], m_hWnd})
+        if (window && IsWindowVisible(window) && IsWindowEnabled(window)) order.push_back(window);
+    auto found = std::find(order.begin(), order.end(), GetFocus());
+    bool backwards = GetKeyState(VK_SHIFT) < 0;
+    size_t index = found == order.end() ? (backwards ? order.size() - 1 : 0)
+        : ((found - order.begin()) + order.size() + (backwards ? -1 : 1)) % order.size();
+    SendMessage(m_hWnd, WM_UPDATEUISTATE, MAKEWPARAM(UIS_CLEAR, UISF_HIDEFOCUS), 0);
+    SetFocus(order[index]);
+    return true;
+}
