@@ -26,6 +26,7 @@ public class UiThemeNative {
  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr window,out RECT r);
  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr window,ref POINT p);
  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr window,IntPtr dc,uint flags);
+ [DllImport("user32.dll",EntryPoint="SendMessageW")] public static extern IntPtr Number(IntPtr w,uint m,IntPtr wp,IntPtr lp);
  public static string Text(IntPtr w) { var s=new StringBuilder(256); ReadText(w,13,(IntPtr)256,s);return s.ToString(); }
  public static void SetText(IntPtr w,string text) { SendText(w,12,IntPtr.Zero,text); }
  public static IntPtr OwnedDialog(IntPtr owner) { IntPtr result=IntPtr.Zero; EnumWindows((w,d)=>{ var cls=new StringBuilder(32);GetClassName(w,cls,32);if(GetWindow(w,4)==owner && cls.ToString()=="#32770"){result=w;return false;}return true;},IntPtr.Zero);return result; }
@@ -118,12 +119,24 @@ try {
     Save-Capture $script:main 'ui-theme-light-custom'
     Command $script:main (Id 'IDM_UI_THEME')
     $log.Add('PASS: custom accent/light/dark colors saved; Cancel discarded unsaved changes.')
+    Command $script:main (Id 'IDM_READING_PRESETS')
+    $deadline=[DateTime]::UtcNow.AddSeconds(5)
+    do { Start-Sleep -Milliseconds 100; $presets=[UiThemeNative]::FindWindow('#32770','阅读预设与场景') } while ($presets -eq 0 -and [DateTime]::UtcNow -lt $deadline)
+    if ($presets -eq 0) { throw 'Reading presets did not open' }
+    [UiThemeNative]::SetText([UiThemeNative]::GetDlgItem($presets,(Id 'IDC_PRESETS_NAME')),'论文排版')
+    Command $presets (Id 'IDC_PRESETS_SAVE')
+    $list=[UiThemeNative]::GetDlgItem($presets,(Id 'IDC_PRESETS_LIST'))
+    if ([UiThemeNative]::Number($list,0x18B,[IntPtr]0,[IntPtr]0).ToInt32() -ne 1) { throw 'Reading preset was not saved' }
+    Save-Capture $presets 'reading-presets'
+    Command $presets 1; Wait-Closed $presets
+    $log.Add('PASS: named reading preset saved and applied through the actual dialog.')
     Stop-Reader
     $savedConfiguration=Get-Content $profilePath -Raw|ConvertFrom-Json
     if (!$savedConfiguration.uiTheme.darkMode -or $savedConfiguration.uiTheme.accent -ne (36+156*256+160*65536) -or $savedConfiguration.uiTheme.darkBackground -ne (12+18*256+28*65536)) { throw 'UI theme configuration was not persisted' }
     foreach ($name in 'background','styles','layout') {
         if (($savedConfiguration.$name|ConvertTo-Json -Depth 30 -Compress) -ne $reading[$name]) { throw "UI theme changed reading $name" }
     }
+    if ($savedConfiguration.readingPresets.Count -ne 1 -or $savedConfiguration.readingPresets[0].name -ne '论文排版') { throw 'Reading preset was not persisted' }
     $log.Add('PASS: reading background, text styles and layout are unchanged in the saved profile.')
     Start-Reader
     Save-Capture $script:main 'ui-theme-dark-restarted'
