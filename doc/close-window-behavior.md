@@ -12,6 +12,10 @@
 「更多 → 退出」及托盘菜单的「退出」始终直接退出软件。
 旧版本配置没有询问选项时，升级后默认先询问。
 
+![浅色关闭选择窗口](images/close-window/close-choice-light.png)
+
+![深色关闭选择窗口](images/close-window/close-choice-dark.png)
+
 托盘图标创建失败时窗口会保持打开并提示，不会隐藏成无法恢复的后台进程。
 
 ## 修复说明
@@ -22,3 +26,16 @@
 Windows 回归脚本 `scripts/windows-caption-test.ps1` 使用实际鼠标点击标题栏，
 覆盖最大化／还原／最小化、关闭选择、取消、两种动作的一次性与记忆行为、
 重启持久化、设置恢复询问和旧配置迁移。
+
+## Windows 验证与下载
+
+[下载修复测试包](https://github.com/Fangcbb/Reader/actions/runs/41618823165/artifacts/13221599859)（需登录 GitHub）。
+该包是发布后增加关闭修复与选择弹窗的开发构建，文件版本仍为 3.2.0.1；
+不会替换已发布的 preview.2 Release，使用此构建链接区分。
+
+[Windows 验证记录](https://github.com/Fangcbb/Reader/actions/runs/41618823165)全部通过：
+原生 MSVC 编译、EPUB 阅读、全屏取色、UI 主题／阅读预设，以及关闭流程回归。
+测试通过实际点击在已发布 preview.2 上复现旧问题，再验证修复版最大化、还原、最小化、
+关闭弹窗、取消、记住退出／托盘、重启持久化、设置恢复询问和旧配置迁移。
+
+测试使用 Windows 返回的真实标题栏按钮矩形定位；合成的 WM_NCHITTEST 结果可能与 DWM 实际按钮区域不同。
