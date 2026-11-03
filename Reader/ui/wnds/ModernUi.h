@@ -166,6 +166,56 @@ inline LRESULT CALLBACK groupProc(HWND window, UINT message, WPARAM wp, LPARAM l
     if (message == WM_NCDESTROY) RemoveWindowSubclass(window, groupProc, 2);
     return DefSubclassProc(window, message, wp, lp);
 }
+inline LRESULT CALLBACK choiceProc(HWND window, UINT message, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR)
+{
+    if (message == WM_PAINT || message == WM_PRINTCLIENT)
+    {
+        PAINTSTRUCT ps; HDC dc = message == WM_PRINTCLIENT ? (HDC)wp : BeginPaint(window, &ps);
+        RECT rect; GetClientRect(window, &rect);
+        COLORREF base = inCard(GetParent(window), window) ? surface() : background();
+        fill(dc, rect, base);
+        bool enabled = IsWindowEnabled(window) != FALSE;
+        auto style = GetWindowLongPtr(window, GWL_STYLE);
+        int type = style & BS_TYPEMASK;
+        bool radio = type == BS_RADIOBUTTON || type == BS_AUTORADIOBUTTON;
+        int state = (int)SendMessage(window, BM_GETCHECK, 0, 0);
+        int size = px(14), y = (rect.bottom - size) / 2;
+        RECT box = {px(1), y, px(1) + size, y + size};
+        if (style & BS_LEFTTEXT) { box.right = rect.right - px(1); box.left = box.right - size; }
+        COLORREF border = enabled ? UiColors::mutedOn(base) : line();
+        COLORREF selected = enabled ? accent() : UiColors::mutedOn(base);
+        HBRUSH brush = CreateSolidBrush(!radio && state != BST_UNCHECKED ? selected : base);
+        HPEN pen = CreatePen(PS_SOLID, 1, !radio && state != BST_UNCHECKED ? selected : border);
+        auto oldBrush = SelectObject(dc, brush); auto oldPen = SelectObject(dc, pen);
+        if (radio) Ellipse(dc, box.left, box.top, box.right, box.bottom);
+        else RoundRect(dc, box.left, box.top, box.right, box.bottom, px(3), px(3));
+        if (state != BST_UNCHECKED)
+        {
+            if (radio) {
+                HBRUSH dot = CreateSolidBrush(selected); HPEN dotPen = CreatePen(PS_SOLID, 1, selected);
+                SelectObject(dc, dot); SelectObject(dc, dotPen);
+                Ellipse(dc, box.left+px(4), box.top+px(4), box.right-px(4), box.bottom-px(4));
+                SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(dot); DeleteObject(dotPen);
+            } else {
+                HPEN check = CreatePen(PS_SOLID, px(2), UiColors::readable(selected)); SelectObject(dc, check);
+                if (state == BST_INDETERMINATE) { MoveToEx(dc, box.left+px(3), y+size/2, nullptr); LineTo(dc, box.right-px(3), y+size/2); }
+                else { MoveToEx(dc, box.left+px(3), y+px(7), nullptr); LineTo(dc, box.left+px(6), y+px(10)); LineTo(dc, box.right-px(2), y+px(3)); }
+                SelectObject(dc, oldPen); DeleteObject(check);
+            }
+        }
+        SelectObject(dc, oldPen); SelectObject(dc, oldBrush); DeleteObject(pen); DeleteObject(brush);
+        RECT label = rect;
+        if (style & BS_LEFTTEXT) label.right = box.left - px(5); else label.left = box.right + px(5);
+        text(dc, caption(window), label, enabled ? UiColors::readable(base) : UiColors::mutedOn(base), 9);
+        if (GetFocus() == window && !(SendMessage(window, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS)) DrawFocusRect(dc, &label);
+        if (message == WM_PAINT) EndPaint(window, &ps);
+        return 0;
+    }
+    if (message == WM_NCDESTROY) RemoveWindowSubclass(window, choiceProc, 3);
+    auto result = DefSubclassProc(window, message, wp, lp);
+    if (message == BM_SETCHECK || message == WM_LBUTTONUP || message == WM_LBUTTONDOWN || message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_KEYUP || message == WM_ENABLE) InvalidateRect(window, nullptr, FALSE);
+    return result;
+}
 inline bool inCard(HWND parent, HWND child)
 {
     RECT item; GetWindowRect(child, &item); POINT point = {item.left, item.top}; ScreenToClient(parent, &point);
@@ -188,6 +238,8 @@ inline void initDialog(HWND parent)
             auto type = GetWindowLongPtr(w, GWL_STYLE) & BS_TYPEMASK;
             if (type == BS_PUSHBUTTON || type == BS_DEFPUSHBUTTON) button(w);
             else if (type == BS_GROUPBOX) SetWindowSubclass(w, groupProc, 2, 0);
+            else if (type == BS_CHECKBOX || type == BS_AUTOCHECKBOX || type == BS_3STATE || type == BS_AUTO3STATE || type == BS_RADIOBUTTON || type == BS_AUTORADIOBUTTON)
+                SetWindowSubclass(w, choiceProc, 3, 0);
         }
     }
 }
