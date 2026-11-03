@@ -6,6 +6,8 @@
 #include "LayoutText.h"
 #include "IBook.h"
 
+namespace { const UINT_PTR SCREEN_PICKER_TIMER = 0x5343; }
+
 DisplaySettingDlg::DisplaySettingDlg(HINSTANCE hInstance, HWND hParent)
     : Dialog(hInstance, hParent, IDD_DISPLAYSETTING)
     , m_pickerCursor(LoadCursor(hInstance, MAKEINTRESOURCE(IDC_CURSOR_PICKER)))
@@ -23,6 +25,7 @@ DisplaySettingDlg::DisplaySettingDlg(HINSTANCE hInstance, HWND hParent)
 
 DisplaySettingDlg::~DisplaySettingDlg()
 {
+    stopPickColor();
 }
 
 bool DisplaySettingDlg::isChanged() const
@@ -32,6 +35,17 @@ bool DisplaySettingDlg::isChanged() const
 
 LRESULT DisplaySettingDlg::onInitDialog()
 {
+    m_pickerTooltip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
+        WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
+    if (m_pickerTooltip)
+    {
+        TOOLINFOW tip = {}; tip.cbSize = sizeof(tip);
+        tip.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        tip.hwnd = m_hWnd; tip.uId = (UINT_PTR)GetDlgItem(m_hWnd, IDC_STATIC_PICKER);
+        tip.lpszText = const_cast<wchar_t*>(L"点击吸管后选择屏幕颜色，也可按住拖动。Esc 或右键取消。");
+        SendMessageW(m_pickerTooltip, TTM_ADDTOOLW, 0, (LPARAM)&tip);
+        SendMessage(m_pickerTooltip, TTM_SETMAXTIPWIDTH, 0, 300);
+    }
     // font settings
     auto &data = Settings::instance().data();
     CheckDlgButton(m_hWnd, IDC_CHECK_SAMETEXTSTYLE, m_styles.unified ? BST_CHECKED : BST_UNCHECKED);
@@ -72,6 +86,7 @@ LRESULT DisplaySettingDlg::onInitDialog()
 
 LRESULT DisplaySettingDlg::onSave()
 {
+    stopPickColor();
     if (!loadData())
     {
         return FALSE;
@@ -396,26 +411,54 @@ bool DisplaySettingDlg::handleEditChange(int editId, int sliderId, BYTE& value, 
 
 void DisplaySettingDlg::startPickColor()
 {
-    if (!m_isPickingColor)
+    if (m_isPickingColor || !GetCursorPos(&m_pickerOrigin)) return;
+    m_colorBeforePick = m_background.color;
+    m_pickerClickMode = m_pickerHasMoved = false;
+    m_isPickingColor = true;
+    SetFocus(m_hWnd);
+    SetCapture(m_hWnd);
+    if (GetCapture() != m_hWnd || !SetTimer(m_hWnd, SCREEN_PICKER_TIMER, 33, nullptr))
     {
-        m_isPickingColor = true;
-        SetCapture(m_hWnd);
-        SetCursor(m_pickerCursor);
+        stopPickColor(true);
+        return;
     }
+    if (m_pickerTooltip) SendMessage(m_pickerTooltip, TTM_POP, 0, 0);
+    SetCursor(m_pickerCursor ? m_pickerCursor : LoadCursor(nullptr, IDC_CROSS));
 }
 
-void DisplaySettingDlg::stopPickColor()
+void DisplaySettingDlg::stopPickColor(bool cancel)
 {
-    if (m_isPickingColor)
-    {
-        m_isPickingColor = false;
-        ReleaseCapture();
-        SetCursor(NULL);
-    }
+    if (!m_isPickingColor) return;
+    m_isPickingColor = false; // ReleaseCapture synchronously sends WM_CAPTURECHANGED.
+    KillTimer(m_hWnd, SCREEN_PICKER_TIMER);
+    if (GetCapture() == m_hWnd) ReleaseCapture();
+    SetCursor(LoadCursor(nullptr, IDC_ARROW));
+    if (cancel) updatePickColor(m_colorBeforePick);
+}
+
+void DisplaySettingDlg::sampleScreenColor()
+{
+    if (!m_isPickingColor) return;
+    POINT point;
+    // The screen DC uses physical pixels. Resolve dynamically to retain the
+    // existing XP-compatible build path, where GetCursorPos is the fallback.
+    using PhysicalCursor = BOOL(WINAPI*)(LPPOINT);
+    static auto physicalCursor = (PhysicalCursor)GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetPhysicalCursorPos");
+    if (physicalCursor ? !physicalCursor(&point) : !GetCursorPos(&point)) return;
+    POINT logicalCursor;
+    if (GetCursorPos(&logicalCursor) &&
+        (abs(logicalCursor.x - m_pickerOrigin.x) > 4 || abs(logicalCursor.y - m_pickerOrigin.y) > 4))
+        m_pickerHasMoved = true;
+    HDC screen = GetDC(nullptr);
+    if (!screen) return;
+    COLORREF color = GetPixel(screen, point.x, point.y);
+    ReleaseDC(nullptr, screen);
+    if (color != CLR_INVALID) updatePickColor(color);
 }
 
 void DisplaySettingDlg::updatePickColor(COLORREF color)
 {
+    if (m_background.color == color) return;
     m_background.color = color;
     SetDlgItemTextW(m_hWnd, IDC_STATIC_RGB, Utils::toRGB(m_background.color).c_str());
     updatePreview();
@@ -529,6 +572,7 @@ LRESULT DisplaySettingDlg::handleMessage(UINT message, WPARAM wParam, LPARAM lPa
         case IDOK:
             return onSave();
         case IDCANCEL:
+            if (m_isPickingColor) { stopPickColor(true); return TRUE; }
             EndDialog(m_hWnd, LOWORD(wParam));
             return (INT_PTR)TRUE;
         case IDC_CHECK_SAMETEXTSTYLE:
@@ -652,31 +696,58 @@ LRESULT DisplaySettingDlg::handleMessage(UINT message, WPARAM wParam, LPARAM lPa
     }
     case WM_LBUTTONDOWN:
     {
-        POINT pt = {LOWORD(lParam), HIWORD(lParam)};
-        ClientToScreen(m_hWnd, &pt);
-        RECT rect;
-        GetWindowRect(GetDlgItem(m_hWnd, IDC_STATIC_PICKER), &rect);
-        if (PtInRect(&rect, pt))
+        if (m_isPickingColor) return TRUE;
+        POINT point; RECT picker;
+        if (GetCursorPos(&point) && GetWindowRect(GetDlgItem(m_hWnd, IDC_STATIC_PICKER), &picker) && PtInRect(&picker, point))
         {
             startPickColor();
+            return TRUE;
         }
         break;
     }
-
     case WM_LBUTTONUP:
-        stopPickColor();
-        break;
-
-    case WM_MOUSEMOVE:
         if (m_isPickingColor)
         {
-            POINT pt = {LOWORD(lParam), HIWORD(lParam)};
-            ClientToScreen(m_hWnd, &pt);
-            HDC hdc = GetDC(NULL);
-            COLORREF color = GetPixel(hdc, pt.x, pt.y);
-            ReleaseDC(NULL, hdc);
-            updatePickColor(color);
+            sampleScreenColor();
+            if (m_pickerClickMode || m_pickerHasMoved) stopPickColor();
+            else m_pickerClickMode = true; // A click arms selection; a drag confirms on release.
+            return TRUE;
         }
+        break;
+    case WM_MOUSEMOVE:
+        if (m_isPickingColor) { sampleScreenColor(); return TRUE; }
+        break;
+    case WM_TIMER:
+        if (wParam == SCREEN_PICKER_TIMER)
+        {
+            if (GetCapture() != m_hWnd) stopPickColor(true);
+            else sampleScreenColor();
+            return TRUE;
+        }
+        break;
+    case WM_SETCURSOR:
+        if (m_isPickingColor)
+        {
+            SetCursor(m_pickerCursor ? m_pickerCursor : LoadCursor(nullptr, IDC_CROSS));
+            return TRUE;
+        }
+        break;
+    case WM_KEYDOWN:
+        if (m_isPickingColor && wParam == VK_ESCAPE) { stopPickColor(true); return TRUE; }
+        break;
+    case WM_RBUTTONDOWN:
+        if (m_isPickingColor) { stopPickColor(true); return TRUE; }
+        break;
+    case WM_CAPTURECHANGED:
+    case WM_CANCELMODE:
+        stopPickColor(true);
+        break;
+    case WM_CLOSE:
+        stopPickColor(true);
+        EndDialog(m_hWnd, IDCANCEL);
+        return TRUE;
+    case WM_DESTROY:
+        stopPickColor();
         break;
 
     default:

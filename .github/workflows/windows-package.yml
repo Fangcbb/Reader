@@ -38,6 +38,9 @@ jobs:
       - name: Native Windows startup and EPUB smoke check
         shell: pwsh
         run: ./scripts/windows-smoke.ps1 -ExePath x64/Release/Reader.exe -BookPath "$env:RUNNER_TEMP/reader-fixtures/epub3.epub" -OutputPath "$env:RUNNER_TEMP/reader-smoke"
+      - name: Full-screen eyedropper regression check
+        shell: pwsh
+        run: ./scripts/windows-color-picker-test.ps1 -ExePath x64/Release/Reader.exe -OutputPath "$env:RUNNER_TEMP/reader-smoke"
       - name: Package portable EXE
         shell: pwsh
         run: |

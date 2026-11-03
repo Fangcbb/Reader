@@ -36,7 +36,8 @@ protected:
     bool handleSliderChange(int sliderId, int editId, BYTE& value);
     bool handleEditChange(int editId, int sliderId, BYTE& value, int minValue, int maxValue);
     void startPickColor();
-    void stopPickColor();
+    void stopPickColor(bool cancel = false);
+    void sampleScreenColor();
     void updatePickColor(COLORREF color);
     bool openFileDialog(std::wstring& fileName);
     bool loadData();
@@ -52,6 +53,11 @@ public:
 protected:
     HCURSOR m_pickerCursor;
     bool m_isPickingColor;
+    bool m_pickerClickMode = false;
+    bool m_pickerHasMoved = false;
+    POINT m_pickerOrigin = {};
+    COLORREF m_colorBeforePick = 0;
+    HWND m_pickerTooltip = nullptr;
     TextInfo m_styles;
     BYTE m_alpha;
     BYTE m_textAlpha;
