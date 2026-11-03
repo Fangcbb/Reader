@@ -93,7 +93,7 @@ try {
     $windowRect=New-Object UiThemeNative+RECT;[void][UiThemeNative]::GetWindowRect($script:main,[ref]$windowRect)
     # Saved compact layout is below the docking threshold, so this crop covers
     # reading content, not the separate shell or sidebar.
-    $crop=@($origin.X-$windowRect.Left+40,$origin.Y-$windowRect.Top+110,$client.Right-80,$client.Bottom-200)
+    $crop=@(($origin.X-$windowRect.Left+40),($origin.Y-$windowRect.Top+110),($client.Right-80),($client.Bottom-200))
     $crop | ConvertTo-Json | Set-Content (Join-Path $OutputPath 'ui-theme-reading-crop.json')
     Save-Capture $script:main 'ui-theme-light'
     $header=[UiThemeNative]::FindWindowEx($script:main,[IntPtr]0,'STATIC','Reader 工具栏')
@@ -119,10 +119,10 @@ try {
     Command $script:main (Id 'IDM_UI_THEME')
     $log.Add('PASS: custom accent/light/dark colors saved; Cancel discarded unsaved changes.')
     Stop-Reader
-    $profile=Get-Content $profilePath -Raw|ConvertFrom-Json
-    if (!$profile.uiTheme.darkMode -or $profile.uiTheme.accent -ne (36+156*256+160*65536) -or $profile.uiTheme.darkBackground -ne (12+18*256+28*65536)) { throw 'UI theme configuration was not persisted' }
+    $savedConfiguration=Get-Content $profilePath -Raw|ConvertFrom-Json
+    if (!$savedConfiguration.uiTheme.darkMode -or $savedConfiguration.uiTheme.accent -ne (36+156*256+160*65536) -or $savedConfiguration.uiTheme.darkBackground -ne (12+18*256+28*65536)) { throw 'UI theme configuration was not persisted' }
     foreach ($name in 'background','styles','layout') {
-        if (($profile.$name|ConvertTo-Json -Depth 30 -Compress) -ne $reading[$name]) { throw "UI theme changed reading $name" }
+        if (($savedConfiguration.$name|ConvertTo-Json -Depth 30 -Compress) -ne $reading[$name]) { throw "UI theme changed reading $name" }
     }
     $log.Add('PASS: reading background, text styles and layout are unchanged in the saved profile.')
     Start-Reader
@@ -133,6 +133,9 @@ try {
     $log.Add('PASS: dark mode and custom colors survived restart.')
     $log | Set-Content (Join-Path $OutputPath 'ui-theme-tests.txt') -Encoding utf8
     $log | Write-Output
+} catch {
+    Write-Host $_.ScriptStackTrace
+    throw
 } finally {
     if ($script:reader -and !$script:reader.HasExited) { [void]$script:reader.CloseMainWindow();if (!$script:reader.WaitForExit(5000)) { $script:reader.Kill() } }
 }
