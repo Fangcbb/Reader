@@ -83,19 +83,6 @@ const wchar_t* MainWin::className(HINSTANCE hInstance)
 
 LRESULT MainWin::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
 {
-    // Opt-in native input trace for isolated Windows regression diagnostics.
-    static bool traceCaption = [] { wchar_t flag[2]; return GetEnvironmentVariableW(L"READER_CAPTION_TRACE", flag, 2) > 0; }();
-    if (traceCaption && (message == WM_NCLBUTTONDOWN || message == WM_NCLBUTTONUP ||
-        message == WM_NCLBUTTONDBLCLK || message == WM_SYSCOMMAND || message == WM_SIZE || message == WM_CLOSE))
-    {
-        if (FILE* trace = _wfopen((Utils::appPath() + L"caption-trace.txt").c_str(), L"a"))
-        {
-            POINT cursor = {}; GetCursorPos(&cursor);
-            fprintf(trace, "msg=%x wp=%llx lp=%llx cursor=%ld,%ld iconic=%d zoomed=%d\n", message,
-                (unsigned long long)wParam, (unsigned long long)lParam, cursor.x, cursor.y, IsIconic(m_hWnd), IsZoomed(m_hWnd));
-            fclose(trace);
-        }
-    }
     LRESULT result = -1;
     switch (message)
     {

@@ -4,7 +4,6 @@ param(
     [switch]$ExpectBlocked
 )
 $ErrorActionPreference = 'Stop'
-$env:READER_CAPTION_TRACE = '1'
 $source = (Resolve-Path $ExePath).Path
 # Isolate settings from other smoke checks and from the published baseline.
 New-Item -ItemType Directory -Force $OutputPath | Out-Null
@@ -18,6 +17,11 @@ using System.Runtime.InteropServices;
 public class CaptionNative {
  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X,Y; }
  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left,Top,Right,Bottom; }
+ [StructLayout(LayoutKind.Sequential)] public struct TITLEBARINFOEX {
+   public uint size; public RECT title;
+   [MarshalAs(UnmanagedType.ByValArray,SizeConst=6)] public uint[] states;
+   [MarshalAs(UnmanagedType.ByValArray,SizeConst=6)] public RECT[] buttons;
+ }
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr w,out RECT r);
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr w);
  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr w);
@@ -34,28 +38,29 @@ public class CaptionNative {
  [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr w,uint message,IntPtr wp,IntPtr lp);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern IntPtr SendMessage(IntPtr w,uint message,IntPtr wp,IntPtr lp);
- // Find a real non-client button by its Windows hit-test result, avoiding
- // assumptions about caption height, DPI or the active Windows visual style.
+ // Ask Windows for the actual accessible caption-button rectangles. Synthetic
+ // WM_NCHITTEST messages may use different classic/DWM button metrics.
  public static void ClickButton(IntPtr w,int hit) {
    SetWindowPos(w,new IntPtr(-1),0,0,0,0,3);
    SetForegroundWindow(w);
-   System.Threading.Thread.Sleep(400);
-   RECT r; if (!GetWindowRect(w,out r)) throw new Exception("Missing main window");
-   int left=int.MaxValue,top=int.MaxValue,right=int.MinValue,bottom=int.MinValue;
-   for (int y=r.Top+8; y<Math.Min(r.Top+70,r.Bottom); y+=3)
-     for (int x=r.Right-12; x>Math.Max(r.Right-220,r.Left); x-=3) {
-       var point=new IntPtr(unchecked((int)(((uint)(ushort)y<<16)|(ushort)x)));
-       if (SendMessage(w,0x84,IntPtr.Zero,point).ToInt32()!=hit) continue;
-       left=Math.Min(left,x);right=Math.Max(right,x);top=Math.Min(top,y);bottom=Math.Max(bottom,y);
-     }
-   if (left==int.MaxValue) throw new Exception("Caption hit target not found: "+hit);
-   SetCursorPos((left+right)/2,(top+bottom)/2);
-   System.Threading.Thread.Sleep(200);
-   var p=new POINT { X=(left+right)/2,Y=(top+bottom)/2 };
-   if (GetAncestor(WindowFromPoint(p),2)!=w) throw new Exception("Caption is covered by another window");
-   var actual=SendMessage(w,0x84,IntPtr.Zero,new IntPtr(unchecked((int)(((uint)(ushort)p.Y<<16)|(ushort)p.X)))).ToInt32();
-   if (actual!=hit) throw new Exception("Caption moved during click: expected="+hit+" actual="+actual);
-   Console.WriteLine("Physical caption click: hit="+hit+" x="+p.X+" y="+p.Y);
+   System.Threading.Thread.Sleep(250);
+   var title=new TITLEBARINFOEX { states=new uint[6],buttons=new RECT[6] };
+   title.size=(uint)Marshal.SizeOf(typeof(TITLEBARINFOEX));
+   IntPtr memory=Marshal.AllocHGlobal((int)title.size);
+   try {
+     Marshal.StructureToPtr(title,memory,false);
+     SendMessage(w,0x33F,IntPtr.Zero,memory);
+     title=(TITLEBARINFOEX)Marshal.PtrToStructure(memory,typeof(TITLEBARINFOEX));
+   } finally { Marshal.FreeHGlobal(memory); }
+   int index=hit==20?5:hit==9?3:2;
+   RECT button=title.buttons[index];
+   if (button.Right<=button.Left || button.Bottom<=button.Top || (title.states[index]&0x8000)!=0)
+     throw new Exception("Windows did not expose caption button "+hit);
+   var point=new POINT { X=(button.Left+button.Right)/2,Y=(button.Top+button.Bottom)/2 };
+   if (GetAncestor(WindowFromPoint(point),2)!=w) throw new Exception("Caption is covered by another window");
+   if (!SetCursorPos(point.X,point.Y)) throw new Exception("Desktop cursor is unavailable");
+   System.Threading.Thread.Sleep(100);
+   Console.WriteLine("Physical caption click: hit="+hit+" x="+point.X+" y="+point.Y);
    mouse_event(2,0,0,0,UIntPtr.Zero);
    System.Threading.Thread.Sleep(100);
    mouse_event(4,0,0,0,UIntPtr.Zero);
@@ -207,7 +212,6 @@ try {
 } catch {
     if ($reader -and !$reader.HasExited) {
         Save-Prompt $main 'caption-failure'
-        Get-Content (Join-Path (Split-Path $exe) 'caption-trace.txt') -ErrorAction SilentlyContinue | Write-Host
         Write-Host "Failure state: visible=$([CaptionNative]::IsWindowVisible($main)) iconic=$([CaptionNative]::IsIconic($main)) zoomed=$([CaptionNative]::IsZoomed($main))"
     }
     throw
