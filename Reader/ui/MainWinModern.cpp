@@ -207,7 +207,20 @@ bool MainWin::handleShellNavigation(const MSG& message)
         wchar_t name[32]; GetClassNameW(message.hwnd, name, ARRAYSIZE(name));
         if (!_wcsicmp(name, L"Button")) { SendMessage(message.hwnd, BM_CLICK, 0, 0); return true; }
     }
-    if (message.wParam != VK_TAB) return false;
+    if (message.wParam != VK_TAB)
+    {
+        wchar_t name[32]; GetClassNameW(message.hwnd, name, ARRAYSIZE(name));
+        // A toolbar click keeps focus on its button. Reading arrows and global
+        // shortcuts must still work; Space continues to activate that button.
+        if (message.hwnd != m_hWnd &&
+            ((!_wcsicmp(name, L"Button") && message.wParam != VK_SPACE)
+                || GetKeyState(VK_CONTROL) < 0 || GetKeyState(VK_MENU) < 0))
+        {
+            SendMessage(m_hWnd, message.message, message.wParam, message.lParam);
+            return true;
+        }
+        return false;
+    }
     std::vector<HWND> order;
     for (HWND window : {m_shellButtons[IDM_OPEN], m_shellButtons[IDM_VIEW], m_shellButtons[IDM_DISPLAY], m_shellButtons[IDM_UI_MORE],
         m_hTreeView, m_hTreeMark, m_shellButtons[IDM_UI_FOCUS], m_shellButtons[IDM_UI_PREVIOUS], m_shellButtons[IDM_UI_NEXT], m_hWnd})

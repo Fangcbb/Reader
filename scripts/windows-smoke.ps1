@@ -99,6 +99,14 @@ try {
         while ([ReaderSmokeNative]::IsWindow($handle) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
         if ([ReaderSmokeNative]::IsWindow($handle)) { throw 'Settings Cancel did not close the dialog' }
     }
+    $toolbar = [ReaderSmokeNative]::FindWindowEx($main, [IntPtr]0, 'STATIC', 'Reader 工具栏')
+    $appearanceButton = [ReaderSmokeNative]::GetDlgItem($toolbar, (Resource-Id 'IDM_DISPLAY'))
+    foreach ($reading in @(@(0x25, '*封面*'), @(0x27, '*第一章*'))) {
+        [void][ReaderSmokeNative]::PostMessage($appearanceButton, 0x100, [IntPtr]$reading[0], [IntPtr]0)
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        do { Start-Sleep -Milliseconds 100; $process.Refresh() } while ($process.MainWindowTitle -notlike $reading[1] -and [DateTime]::UtcNow -lt $deadline)
+        if ($process.MainWindowTitle -notlike $reading[1]) { throw 'Reading arrows stopped working with toolbar focus' }
+    }
     [void][ReaderSmokeNative]::SetWindowPos($main, [IntPtr]0, 80, 80, 480, 620, 4)
     Start-Sleep -Milliseconds 300
     Save-Window $main 'compact'
