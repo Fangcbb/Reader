@@ -3,8 +3,13 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the validated preview package
+        type: boolean
+        default: false
 permissions:
-  contents: read
+  contents: write
 jobs:
   package:
     runs-on: windows-2022
@@ -59,3 +64,21 @@ jobs:
             windows-build.log
             ${{ runner.temp }}/reader-smoke/*
           if-no-files-found: warn
+      - name: Publish preview release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $notes = Get-Content doc/release-v3.2.0-preview.1.md -Raw
+          $notes += "`n`nWindows build and EPUB smoke check passed: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`nSource commit: $env:GITHUB_SHA`n"
+          $notes | Set-Content "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8
+          gh release create v3.2.0-preview.1 --target $env:GITHUB_SHA --title 'Reader v3.2.0-preview.1 · 首个 Windows x64 EXE' --notes-file "$env:RUNNER_TEMP/release-notes.md" --prerelease --draft
+          if ($LASTEXITCODE -ne 0) { throw 'Release draft creation failed' }
+          $assets = @(Get-ChildItem dist -File | ForEach-Object FullName)
+          $assets += @(Get-ChildItem "$env:RUNNER_TEMP/reader-smoke/*.png" | ForEach-Object FullName)
+          gh release upload v3.2.0-preview.1 @assets
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed; release remains a draft' }
+          gh release edit v3.2.0-preview.1 --draft=false
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
