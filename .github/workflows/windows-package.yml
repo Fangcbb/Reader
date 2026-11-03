@@ -27,7 +27,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
           if (!(Test-Path 'x64/Release/Reader.exe')) { throw 'Reader.exe was not produced' }
           $version = (Get-Item 'x64/Release/Reader.exe').VersionInfo.FileVersion
-          if ($version -ne '3.2.0.0') { throw "Unexpected EXE version: $version" }
+          if ($version -ne '3.2.0.1') { throw "Unexpected EXE version: $version" }
       - name: Create EPUB fixtures
         shell: pwsh
         run: |
@@ -48,17 +48,19 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist/package | Out-Null
-          Copy-Item x64/Release/Reader.exe dist/Reader-v3.2.0-preview.1-windows-x64.exe
+          Copy-Item x64/Release/Reader.exe dist/Reader-v3.2.0-preview.2-windows-x64.exe
           Copy-Item x64/Release/Reader.exe dist/package/Reader.exe
           Copy-Item misc/readme.txt dist/package/readme.txt
           Copy-Item doc/epub-validation.md dist/package/epub-validation.md
-          Copy-Item doc/release-v3.2.0-preview.1.md dist/package/RELEASE-NOTES.md
-          Compress-Archive -Path dist/package/* -DestinationPath dist/Reader-v3.2.0-preview.1-windows-x64.zip
+          Copy-Item doc/release-v3.2.0-preview.2.md dist/package/RELEASE-NOTES.md
+          Copy-Item doc/reading-presets-and-roadmap.md dist/package/reading-presets-and-roadmap.md
+          Copy-Item doc/screen-picker-and-ui-theme.md dist/package/screen-picker-and-ui-theme.md
+          Compress-Archive -Path dist/package/* -DestinationPath dist/Reader-v3.2.0-preview.2-windows-x64.zip
           Get-ChildItem dist -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content dist/SHA256SUMS.txt -Encoding ascii
       - name: Upload package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: Reader-v3.2.0-preview.1-windows-x64
+          name: Reader-v3.2.0-preview.2-windows-x64
           path: dist/*.*
           if-no-files-found: error
       - name: Upload build and smoke evidence
@@ -77,14 +79,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          $notes = Get-Content doc/release-v3.2.0-preview.1.md -Raw
+          $notes = Get-Content doc/release-v3.2.0-preview.2.md -Raw
           $notes += "`n`nWindows build and EPUB smoke check passed: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`nSource commit: $env:GITHUB_SHA`n"
           $notes | Set-Content "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8
-          gh release create v3.2.0-preview.1 --target $env:GITHUB_SHA --title 'Reader v3.2.0-preview.1 · 首个 Windows x64 EXE' --notes-file "$env:RUNNER_TEMP/release-notes.md" --prerelease --draft
+          gh release create v3.2.0-preview.2 --target $env:GITHUB_SHA --title 'Reader v3.2.0-preview.2 · 阅读预设与现代界面' --notes-file "$env:RUNNER_TEMP/release-notes.md" --prerelease --draft
           if ($LASTEXITCODE -ne 0) { throw 'Release draft creation failed' }
           $assets = @(Get-ChildItem dist -File | ForEach-Object FullName)
           $assets += @(Get-ChildItem "$env:RUNNER_TEMP/reader-smoke/*.png" | ForEach-Object FullName)
-          gh release upload v3.2.0-preview.1 @assets
+          gh release upload v3.2.0-preview.2 @assets
           if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed; release remains a draft' }
-          gh release edit v3.2.0-preview.1 --draft=false
+          gh release edit v3.2.0-preview.2 --draft=false
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
