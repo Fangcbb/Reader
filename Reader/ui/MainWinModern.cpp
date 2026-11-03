@@ -54,8 +54,8 @@ void MainWin::layoutModernUi()
     using ModernUi::px;
     RECT client; GetClientRect(m_hWnd, &client);
     bool normal = m_data.window.mode == DisplayMode::NORMAL;
-    ShowWindow(m_header, normal ? SW_SHOW : SW_HIDE);
-    ShowWindow(m_hStatusBar, normal ? SW_SHOW : SW_HIDE);
+    ShowWindow(m_header, normal ? SW_SHOWNA : SW_HIDE);
+    ShowWindow(m_hStatusBar, normal ? SW_SHOWNA : SW_HIDE);
     SetWindowPos(m_header, HWND_TOP, 0, 0, client.right, px(72), SWP_NOACTIVATE);
     SetWindowPos(m_hStatusBar, HWND_TOP, 0, max(0, client.bottom - px(56)), client.right, px(56), SWP_NOACTIVATE);
     int x = client.right - px(20);
@@ -75,8 +75,8 @@ void MainWin::layoutModernUi()
     bool dock = dockedNavigation();
     RECT area = drawTextRect();
     bool contents = valid && (dock || m_overlayNavigation);
-    ShowWindow(m_hTreeView, contents && !m_overlayMarks ? SW_SHOW : SW_HIDE);
-    ShowWindow(m_hTreeMark, valid && m_overlayMarks ? SW_SHOW : SW_HIDE);
+    ShowWindow(m_hTreeView, contents && !m_overlayMarks ? SW_SHOWNA : SW_HIDE);
+    ShowWindow(m_hTreeMark, valid && m_overlayMarks ? SW_SHOWNA : SW_HIDE);
     if (contents) {
         RECT tree = area;
         if (dock && !m_overlayNavigation) tree = {px(30), px(152), px(238), client.bottom - px(84)};
@@ -85,7 +85,7 @@ void MainWin::layoutModernUi()
     }
     if (m_overlayMarks) SetWindowPos(m_hTreeMark, HWND_TOP, area.left + px(12), area.top + px(16), max(1L, area.right - area.left - px(24)), max(1L, area.bottom - area.top - px(32)), SWP_NOACTIVATE);
     bool welcome = normal && !valid && !m_session->isLoading();
-    ShowWindow(m_welcome, welcome ? SW_SHOW : SW_HIDE);
+    ShowWindow(m_welcome, welcome ? SW_SHOWNA : SW_HIDE);
     if (welcome) {
         int width = max(1L, area.right - area.left), height = max(1L, area.bottom - area.top);
         SetWindowPos(m_welcome, HWND_TOP, area.left, area.top, width, height, SWP_NOACTIVATE);

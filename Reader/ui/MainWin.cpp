@@ -574,6 +574,8 @@ LRESULT MainWin::onClose(UINT message, WPARAM wParam, LPARAM lParam)
 
 LRESULT MainWin::onSize(UINT message, WPARAM wParam, LPARAM lParam)
 {
+    // Relaying out visible child controls can reactivate a minimized parent.
+    if (SIZE_MINIMIZED == wParam) { pauseAutoPage(); return -1; }
     layoutModernUi();
     if (m_hEditCtrl && m_hEditCtrl->isEditing()) m_hEditCtrl->updateLayout();
     if (SIZE_RESTORED == wParam)
