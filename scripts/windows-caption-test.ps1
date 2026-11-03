@@ -15,6 +15,7 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public class CaptionNative {
+ [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X,Y; }
  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left,Top,Right,Bottom; }
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr w,out RECT r);
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr w);
@@ -23,6 +24,8 @@ public class CaptionNative {
  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr w,int command);
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr w);
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+ [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
+ [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr w,uint flags);
  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr w,IntPtr after,int x,int y,int width,int height,uint flags);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls,string title);
  [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr w,int id);
@@ -45,6 +48,9 @@ public class CaptionNative {
    SetWindowPos(w,new IntPtr(-1),0,0,0,0,3);
    SetForegroundWindow(w); SetCursorPos((left+right)/2,(top+bottom)/2);
    System.Threading.Thread.Sleep(200);
+   var p=new POINT { X=(left+right)/2,Y=(top+bottom)/2 };
+   if (GetAncestor(WindowFromPoint(p),2)!=w) throw new Exception("Caption is covered by another window");
+   Console.WriteLine("Physical caption click: hit="+hit+" x="+p.X+" y="+p.Y);
    mouse_event(2,0,0,0,UIntPtr.Zero);
    System.Threading.Thread.Sleep(100);
    mouse_event(4,0,0,0,UIntPtr.Zero);
@@ -116,8 +122,11 @@ try {
         [CaptionNative]::ClickButton($main,9)
         Start-Sleep -Milliseconds 500
         if ([CaptionNative]::IsZoomed($main)) { throw 'Physical restore click was ignored' }
+        Exit-Reader
+        Start-Reader
         [CaptionNative]::ClickButton($main,8)
-        Start-Sleep -Milliseconds 500
+        $deadline=[DateTime]::UtcNow.AddSeconds(3)
+        while (![CaptionNative]::IsIconic($main) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
         if (![CaptionNative]::IsIconic($main)) { throw 'Physical minimize click was ignored' }
         [void][CaptionNative]::ShowWindow($main,9)
         Start-Sleep -Milliseconds 300
@@ -190,6 +199,12 @@ try {
         Exit-Reader
         $log.Add('PASS: old profiles default to asking; system close command uses the same prompt.')
     }
+} catch {
+    if ($reader -and !$reader.HasExited) {
+        Save-Prompt $main 'caption-failure'
+        Write-Host "Failure state: visible=$([CaptionNative]::IsWindowVisible($main)) iconic=$([CaptionNative]::IsIconic($main)) zoomed=$([CaptionNative]::IsZoomed($main))"
+    }
+    throw
 } finally {
     if ($reader -and !$reader.HasExited) {
         $dialog=[CaptionNative]::FindWindow('#32770','关闭 Reader')
