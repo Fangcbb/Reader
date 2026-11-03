@@ -97,6 +97,8 @@ try {
     Start-Sleep -Milliseconds 300
     if (![ReaderSmokeNative]::IsWindowVisible($header)) { throw 'Toolbar did not return after focus mode' }
     Save-Window $main 'restored'
+    python scripts/verify-ui-captures.py $OutputPath
+    if ($LASTEXITCODE -ne 0) { throw 'UI capture verification failed' }
     'Modern dialogs, compact layout and focus-mode transitions passed' | Add-Content (Join-Path $OutputPath 'smoke.txt') -Encoding utf8
 } finally {
     if (!$process.HasExited) {

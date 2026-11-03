@@ -88,6 +88,7 @@ LRESULT MainWin::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             UINT wmId = LOWORD(wParam);
             switch (LOWORD(wParam))
             {
+            case IDM_UI_EDIT: return onEditMode(message, wParam, lParam);
             case IDM_UI_MORE: showMoreMenu(); return TRUE;
             case IDM_UI_PREVIOUS: return onPageUp(message, wParam, lParam);
             case IDM_UI_NEXT: return onPageDown(message, wParam, lParam);
@@ -546,6 +547,21 @@ LRESULT MainWin::onNotify(UINT message, WPARAM wParam, LPARAM lParam)
     LPNMHDR pnmh = (LPNMHDR)lParam;
     switch (pnmh->code)
     {
+    case NM_CUSTOMDRAW:
+        if (pnmh->hwndFrom == m_hTreeView || pnmh->hwndFrom == m_hTreeMark)
+        {
+            auto draw = (NMTVCUSTOMDRAW*)lParam;
+            if (draw->nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+            if (draw->nmcd.dwDrawStage == CDDS_ITEMPREPAINT)
+            {
+                bool selected = (draw->nmcd.uItemState & CDIS_SELECTED) != 0;
+                draw->clrText = selected ? ModernUi::accent() : ModernUi::ink();
+                draw->clrTextBk = selected ? RGB(238, 235, 252) : ModernUi::surface();
+                draw->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
+                return CDRF_NEWFONT;
+            }
+        }
+        break;
     case TVN_SELCHANGED:
         if (pnmh->hwndFrom == m_hTreeView)
         {

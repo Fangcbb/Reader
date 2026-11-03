@@ -447,6 +447,7 @@
 #define IDM_UI_ADD_MARK                 1307
 #define IDM_UI_AUTOPAGE                 1308
 #define IDM_UI_FULLSCREEN               1309
+#define IDM_UI_EDIT                     1310
 #define IDC_STATIC                      -1
 
 // Next default values for new objects

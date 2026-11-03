@@ -148,7 +148,7 @@ void MainWin::paintModernBar(HWND window, HDC dc)
         RECT track = {px(24), px(37), available, px(41)};
         round(dc, track, RGB(223,225,235), RGB(223,225,235), 4);
         if (m_session->isValid()) {
-            track.right = track.left + (int)((track.right - track.left) * max(0.0f, min(1.0f, m_session->progress())));
+            track.right = track.left + (int)((track.right - track.left) * max(0.0f, min(1.0f, m_session->progress() / 100.0f)));
             if (track.right > track.left) round(dc, track, accent(), accent(), 4);
         }
     }
@@ -179,6 +179,7 @@ void MainWin::showMoreMenu()
     AppendMenuW(menu, MF_STRING, IDM_UI_JUMP, L"跳转进度\tCtrl+G");
     AppendMenuW(menu, MF_STRING, IDM_UI_AUTOPAGE, L"自动翻页\tSpace");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, IDM_UI_EDIT, L"文本编辑 / 复制\tCtrl+E");
     AppendMenuW(menu, MF_STRING, IDM_CONFIG, L"翻页与阅读行为");
     AppendMenuW(menu, MF_STRING, IDM_KEYSET, L"快捷键设置");
     AppendMenuW(menu, MF_STRING, IDM_ADVSET, L"高级设置");
@@ -186,6 +187,7 @@ void MainWin::showMoreMenu()
     AppendMenuW(menu, MF_STRING, IDM_WEB, L"Web 书库");
     AppendMenuW(menu, MF_STRING, IDM_NETWORK, L"网络设置");
     AppendMenuW(menu, MF_STRING, IDM_UI_FULLSCREEN, L"全屏阅读\tF11");
+    AppendMenuW(menu, MF_STRING, IDM_DEFAULT, L"恢复默认设置");
     AppendMenuW(menu, MF_STRING, IDM_ABOUT, L"关于 Reader");
     RECT button; GetWindowRect(m_shellButtons[IDM_UI_MORE], &button);
     int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTALIGN, button.right, button.bottom + ModernUi::px(6), 0, m_hWnd, nullptr);
