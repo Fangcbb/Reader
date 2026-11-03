@@ -44,6 +44,17 @@ jobs:
       - name: Independent light/dark UI and custom-color check
         shell: pwsh
         run: ./scripts/windows-ui-theme-test.ps1 -ExePath x64/Release/Reader.exe -OutputPath "$env:RUNNER_TEMP/reader-smoke"
+      - name: Reproduce published caption-button bug
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v3.2.0-preview.2 --repo $env:GITHUB_REPOSITORY --pattern 'Reader-v3.2.0-preview.2-windows-x64.exe' --dir "$env:RUNNER_TEMP/caption-baseline-download"
+          if ($LASTEXITCODE -ne 0) { throw 'Published baseline download failed' }
+          ./scripts/windows-caption-test.ps1 -ExePath "$env:RUNNER_TEMP/caption-baseline-download/Reader-v3.2.0-preview.2-windows-x64.exe" -OutputPath "$env:RUNNER_TEMP/reader-smoke/caption-baseline" -ExpectBlocked
+      - name: Native caption buttons and clean-exit regression check
+        shell: pwsh
+        run: ./scripts/windows-caption-test.ps1 -ExePath x64/Release/Reader.exe -OutputPath "$env:RUNNER_TEMP/reader-smoke/caption-fixed"
       - name: Package portable EXE
         shell: pwsh
         run: |

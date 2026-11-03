@@ -744,6 +744,12 @@ LRESULT MainWin::onKeyDown(UINT message, WPARAM wParam, LPARAM lParam)
 
 LRESULT MainWin::onMouseDown(UINT message, WPARAM wParam, LPARAM lParam)
 {
+    // Non-client wParam is an HT* hit-test code, not MK_* mouse flags.
+    // Let Windows handle caption buttons, dragging, resizing and system menus.
+    if ((message == WM_NCLBUTTONDOWN || message == WM_NCRBUTTONDOWN) &&
+        (DisplayMode::NORMAL == m_data.window.mode || wParam != HTCAPTION))
+        return -1;
+
     auto hideTreeView = [this](HWND tv, int pos)
         {
             if (IsWindowVisible(tv) && !(tv == m_hTreeView && dockedNavigation()))
