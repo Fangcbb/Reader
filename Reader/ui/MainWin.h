@@ -93,6 +93,7 @@ protected:
 
 protected:
     void createModernUi();
+    void applyUiTheme();
     void layoutModernUi();
     void paintModernFrame(HDC dc);
     void paintModernBar(HWND window, HDC dc);

@@ -4,7 +4,8 @@ $exe = (Resolve-Path $ExePath).Path
 New-Item -ItemType Directory -Force $OutputPath | Out-Null
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-Type @'
+$references = @([Windows.Forms.Form].Assembly.Location, [Windows.Forms.CreateParams].Assembly.Location, [Drawing.Color].Assembly.Location, [ComponentModel.Component].Assembly.Location, 'System.Runtime.dll') | Select-Object -Unique
+Add-Type -ReferencedAssemblies $references -TypeDefinition @'
 using System;
 using System.Text;
 using System.Runtime.InteropServices;

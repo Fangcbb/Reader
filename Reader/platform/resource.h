@@ -448,6 +448,17 @@
 #define IDM_UI_AUTOPAGE                 1308
 #define IDM_UI_FULLSCREEN               1309
 #define IDM_UI_EDIT                     1310
+#define IDM_UI_THEME                    1311
+#define IDM_UI_THEME_SETTINGS           1312
+#define IDD_UI_THEME                    303
+#define IDC_UI_THEME_DARK               1210
+#define IDC_UI_ACCENT                  1211
+#define IDC_UI_LIGHT_BG                1212
+#define IDC_UI_DARK_BG                 1213
+#define IDC_UI_THEME_PREVIEW            1214
+#define IDC_UI_THEME_RESET              1215
+#define IDC_BUTTON_UI_THEME             1216
+#define WM_UI_THEME_CHANGED             (WM_APP + 711)
 #define IDC_STATIC                      -1
 
 // Next default values for new objects

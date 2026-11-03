@@ -206,6 +206,8 @@
     <ClInclude Include="ui\BookSourceMgrDlg.h" />
     <ClInclude Include="ui\ctrls\ListView.h" />
     <ClInclude Include="ui\DisplaySettingDlg.h" />
+    <ClInclude Include="ui\UiThemeDlg.h" />
+    <ClInclude Include="common\UiPalette.h" />
     <ClInclude Include="ui\EditController.h" />
     <ClInclude Include="ui\FollowDlg.h" />
     <ClInclude Include="ui\JumpProgressDlg.h" />
@@ -262,6 +264,7 @@
     <ClCompile Include="ui\BookSourceMgrDlg.cpp" />
     <ClCompile Include="ui\ctrls\ListView.cpp" />
     <ClCompile Include="ui\DisplaySettingDlg.cpp" />
+    <ClCompile Include="ui\UiThemeDlg.cpp" />
     <ClCompile Include="ui\EditController.cpp" />
     <ClCompile Include="ui\FollowDlg.cpp" />
     <ClCompile Include="ui\JumpProgressDlg.cpp" />

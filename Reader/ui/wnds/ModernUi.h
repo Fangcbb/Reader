@@ -1,6 +1,7 @@
 #pragma once
 #include "framework.h"
 #include "DpiAwareness.h"
+#include "Settings.h"
 #include <map>
 #include <string>
 
@@ -9,12 +10,15 @@
 namespace ModernUi
 {
 inline int px(int value) { int result; DpiAwareness::instance().logicalToPhysical(value, result); return result; }
-inline COLORREF background() { return RGB(245, 246, 250); }
-inline COLORREF surface() { return RGB(255, 255, 255); }
-inline COLORREF ink() { return RGB(31, 41, 61); }
-inline COLORREF muted() { return RGB(113, 122, 142); }
-inline COLORREF accent() { return RGB(101, 86, 213); }
-inline COLORREF line() { return RGB(229, 232, 240); }
+inline UiColors::Palette palette() { return UiColors::make(Settings::instance().data().uiTheme); }
+inline COLORREF background() { return palette().background; }
+inline COLORREF surface() { return palette().surface; }
+inline COLORREF ink() { return palette().text; }
+inline COLORREF muted() { return palette().muted; }
+inline COLORREF accent() { return palette().accent; }
+inline COLORREF line() { return palette().border; }
+inline COLORREF tint() { return palette().tint; }
+inline bool dark() { return UiColors::luminance(surface()) < .179; }
 inline HFONT font(int size = 10, int weight = FW_NORMAL)
 {
     struct Fonts {
@@ -53,10 +57,35 @@ inline void text(HDC dc, const std::wstring& value, RECT rect, COLORREF color, i
 inline HBRUSH brush(bool card)
 {
     struct Brushes {
-        HBRUSH bg = CreateSolidBrush(background()), fg = CreateSolidBrush(surface());
-        ~Brushes() { DeleteObject(bg); DeleteObject(fg); }
+        HBRUSH values[2] = {}; COLORREF colors[2] = {CLR_INVALID, CLR_INVALID};
+        ~Brushes() { for (auto value : values) if (value) DeleteObject(value); }
     };
-    static Brushes b; return card ? b.fg : b.bg;
+    static Brushes brushes;
+    int index = card ? 1 : 0; COLORREF color = card ? surface() : background();
+    if (brushes.colors[index] != color) {
+        if (brushes.values[index]) DeleteObject(brushes.values[index]);
+        brushes.values[index] = CreateSolidBrush(color); brushes.colors[index] = color;
+    }
+    return brushes.values[index];
+}
+inline void nativeTheme(HWND window)
+{
+    using SetTheme = HRESULT(WINAPI*)(HWND, LPCWSTR, LPCWSTR);
+    static HMODULE library = LoadLibraryW(L"uxtheme.dll");
+    static auto set = library ? (SetTheme)GetProcAddress(library, "SetWindowTheme") : nullptr;
+    if (set) set(window, dark() ? L"DarkMode_Explorer" : L"Explorer", nullptr);
+}
+inline void windowTheme(HWND root)
+{
+    if (HMODULE library = LoadLibraryW(L"dwmapi.dll")) {
+        using SetAttribute = HRESULT(WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
+        auto set = (SetAttribute)GetProcAddress(library, "DwmSetWindowAttribute");
+        BOOL enabled = dark();
+        if (set && FAILED(set(root, 20, &enabled, sizeof(enabled)))) set(root, 19, &enabled, sizeof(enabled));
+        FreeLibrary(library);
+    }
+    EnumChildWindows(root, [](HWND child, LPARAM) -> BOOL { nativeTheme(child); return TRUE; }, 0);
+    RedrawWindow(root, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_ERASE);
 }
 inline std::wstring caption(HWND window)
 {
@@ -74,11 +103,31 @@ inline LRESULT CALLBACK buttonProc(HWND window, UINT message, WPARAM wp, LPARAM 
         bool hover = GetPropW(window, L"Reader.Hover") != nullptr;
         bool pressed = (SendMessage(window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
         bool enabled = IsWindowEnabled(window) != FALSE;
-        COLORREF color = !enabled ? RGB(239, 240, 245) : primary ? (pressed ? RGB(76, 61, 176) : hover ? RGB(117, 103, 225) : accent())
-            : pressed ? RGB(225, 222, 246) : hover ? RGB(237, 234, 251) : surface();
+        COLORREF color = !enabled ? UiColors::mix(surface(), ink(), 6) : primary
+            ? (pressed ? UiColors::mix(accent(), RGB(0,0,0), 16) : hover ? UiColors::mix(accent(), RGB(255,255,255), 12) : accent())
+            : pressed ? UiColors::mix(surface(), accent(), 24) : hover ? tint() : surface();
         fill(dc, rect, (GetPropW(GetParent(window), L"Reader.Surface") || inCard(GetParent(window), window)) ? surface() : background()); InflateRect(&rect, -1, -1);
         round(dc, rect, color, primary ? color : line(), 10);
-        text(dc, caption(window), rect, !enabled ? muted() : primary ? RGB(255, 255, 255) : ink(), 9,
+        if (GetPropW(window, L"Reader.ThemeToggle"))
+        {
+            int x = (rect.left + rect.right) / 2, y = (rect.top + rect.bottom) / 2;
+            HPEN pen = CreatePen(PS_SOLID, px(1), ink()); auto oldPen = SelectObject(dc, pen);
+            auto oldBrush = SelectObject(dc, GetStockObject(HOLLOW_BRUSH));
+            if (Settings::instance().data().uiTheme.darkMode) {
+                Ellipse(dc, x-px(5), y-px(5), x+px(5), y+px(5));
+                const int points[][2] = {{0,-1},{1,-1},{1,0},{1,1},{0,1},{-1,1},{-1,0},{-1,-1}};
+                for (const auto& p : points) { MoveToEx(dc, x+p[0]*px(8), y+p[1]*px(8), nullptr); LineTo(dc, x+p[0]*px(11), y+p[1]*px(11)); }
+            } else {
+                HBRUSH moon = CreateSolidBrush(ink()); SelectObject(dc, moon);
+                Ellipse(dc, x-px(8), y-px(8), x+px(8), y+px(8));
+                HBRUSH cut = CreateSolidBrush(color); HPEN cutPen = CreatePen(PS_SOLID, 1, color);
+                SelectObject(dc, cut); SelectObject(dc, cutPen);
+                Ellipse(dc, x-px(3), y-px(11), x+px(12), y+px(4));
+                SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(cutPen); DeleteObject(cut); DeleteObject(moon);
+            }
+            SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(pen);
+        }
+        else text(dc, caption(window), rect, !enabled ? muted() : primary ? UiColors::readable(color) : ink(), 9,
             primary ? FW_SEMIBOLD : FW_NORMAL, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         if (GetFocus() == window && !(SendMessage(window, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS))
         {
@@ -95,7 +144,7 @@ inline LRESULT CALLBACK buttonProc(HWND window, UINT message, WPARAM wp, LPARAM 
         }
     }
     if (message == WM_MOUSELEAVE) { RemovePropW(window, L"Reader.Hover"); InvalidateRect(window, nullptr, FALSE); }
-    if (message == WM_NCDESTROY) { RemovePropW(window, L"Reader.Hover"); RemovePropW(window, L"Reader.Primary"); RemoveWindowSubclass(window, buttonProc, 1); }
+    if (message == WM_NCDESTROY) { RemovePropW(window, L"Reader.Hover"); RemovePropW(window, L"Reader.Primary"); RemovePropW(window, L"Reader.ThemeToggle"); RemoveWindowSubclass(window, buttonProc, 1); }
     LRESULT result = DefSubclassProc(window, message, wp, lp);
     if (message == WM_LBUTTONDOWN || message == WM_LBUTTONUP || message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE || message == WM_KEYDOWN || message == WM_KEYUP)
         InvalidateRect(window, nullptr, FALSE);
@@ -131,6 +180,7 @@ inline bool inCard(HWND parent, HWND child)
 }
 inline void initDialog(HWND parent)
 {
+    windowTheme(parent);
     for (HWND w = GetWindow(parent, GW_CHILD); w; w = GetWindow(w, GW_HWNDNEXT))
     {
         wchar_t cls[32]; GetClassNameW(w, cls, ARRAYSIZE(cls));

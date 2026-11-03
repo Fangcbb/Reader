@@ -16,6 +16,7 @@
 #include "JumpProgressDlg.h"
 #include "conv.h"
 #include "ModernUi.h"
+#include "UiThemeDlg.h"
 #ifdef ENABLE_NETWORK
 #include "https.h"
 #endif
@@ -89,6 +90,11 @@ LRESULT MainWin::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             switch (LOWORD(wParam))
             {
             case IDM_UI_EDIT: return onEditMode(message, wParam, lParam);
+            case IDM_UI_THEME:
+                m_data.uiTheme.darkMode = !m_data.uiTheme.darkMode;
+                Settings::instance().save(); applyUiTheme(); return TRUE;
+            case IDM_UI_THEME_SETTINGS:
+                { UiThemeDlg dialog(m_hInstance, m_hWnd); dialog.exec(); return TRUE; }
             case IDM_UI_MORE: showMoreMenu(); return TRUE;
             case IDM_UI_PREVIOUS: return onPageUp(message, wParam, lParam);
             case IDM_UI_NEXT: return onPageDown(message, wParam, lParam);
@@ -160,6 +166,26 @@ LRESULT MainWin::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             auto info = (MINMAXINFO*)lParam;
             info->ptMinTrackSize = {ModernUi::px(460), ModernUi::px(420)};
             return 0;
+        }
+        break;
+    case WM_UI_THEME_CHANGED: applyUiTheme(); return TRUE;
+    case WM_MEASUREITEM:
+        if (((MEASUREITEMSTRUCT*)lParam)->CtlType == ODT_MENU) {
+            auto item = (MEASUREITEMSTRUCT*)lParam; item->itemWidth = ModernUi::px(280); item->itemHeight = ModernUi::px(32); return TRUE;
+        }
+        break;
+    case WM_DRAWITEM:
+        if (((DRAWITEMSTRUCT*)lParam)->CtlType == ODT_MENU) {
+            auto item = (DRAWITEMSTRUCT*)lParam;
+            COLORREF background = item->itemState & ODS_SELECTED ? ModernUi::tint() : ModernUi::surface();
+            ModernUi::fill(item->hDC, item->rcItem, background);
+            std::wstring label = item->itemData ? (const wchar_t*)item->itemData : L"";
+            size_t tab = label.find(L'\t');
+            RECT left = item->rcItem; left.left += ModernUi::px(14); left.right -= ModernUi::px(14);
+            ModernUi::text(item->hDC, label.substr(0, tab), left,
+                item->itemState & ODS_DISABLED ? ModernUi::muted() : UiColors::readable(background), 9);
+            if (tab != std::wstring::npos) ModernUi::text(item->hDC, label.substr(tab + 1), left, ModernUi::muted(), 8, FW_NORMAL, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+            return TRUE;
         }
         break;
     case WM_ACTIVATE:
@@ -556,7 +582,7 @@ LRESULT MainWin::onNotify(UINT message, WPARAM wParam, LPARAM lParam)
             {
                 bool selected = (draw->nmcd.uItemState & CDIS_SELECTED) != 0;
                 draw->clrText = selected ? ModernUi::accent() : ModernUi::ink();
-                draw->clrTextBk = selected ? RGB(238, 235, 252) : ModernUi::surface();
+                draw->clrTextBk = selected ? ModernUi::tint() : ModernUi::surface();
                 draw->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
                 return CDRF_NEWFONT;
             }

@@ -17,3 +17,6 @@ fi
 "${CXX:-g++}" -std=c++14 -Wall -Wextra -pedantic -UNDEBUG \
     -IReader/renderer tests/image_fit_test.cpp -o "$binary"
 "$binary"
+"${CXX:-g++}" -std=c++14 -Wall -Wextra -pedantic -UNDEBUG \
+    -IReader/common tests/ui_palette_test.cpp -o "$binary"
+"$binary"

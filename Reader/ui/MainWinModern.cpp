@@ -30,10 +30,13 @@ void MainWin::createModernUi()
     add(m_header, IDM_VIEW, L"目录");
     add(m_header, IDM_DISPLAY, L"外观");
     add(m_header, IDM_UI_MORE, L"更多");
+    add(m_header, IDM_UI_THEME, L"切换到深色界面");
+    SetPropW(m_shellButtons[IDM_UI_THEME], L"Reader.ThemeToggle", (HANDLE)1);
     add(m_hStatusBar, IDM_UI_FOCUS, L"专注");
     add(m_hStatusBar, IDM_UI_PREVIOUS, L"上一页");
     add(m_hStatusBar, IDM_UI_NEXT, L"下一页");
     add(m_welcome, IDC_UI_WELCOME_OPEN, L"打开一本书   Ctrl + O", true);
+    applyUiTheme();
     // Rounded native title bar on supported Windows versions; older systems
     // keep their standard non-client frame without a new link-time dependency.
     if (HMODULE dwm = LoadLibraryW(L"dwmapi.dll")) {
@@ -56,7 +59,7 @@ void MainWin::layoutModernUi()
     SetWindowPos(m_header, HWND_TOP, 0, 0, client.right, px(72), SWP_NOACTIVATE);
     SetWindowPos(m_hStatusBar, HWND_TOP, 0, max(0, client.bottom - px(56)), client.right, px(56), SWP_NOACTIVATE);
     int x = client.right - px(20);
-    for (auto entry : {std::make_pair(IDM_UI_MORE, 56), std::make_pair(IDM_DISPLAY, 64), std::make_pair(IDM_VIEW, 64), std::make_pair(IDM_OPEN, client.right >= px(620) ? 108 : 86)}) {
+    for (auto entry : {std::make_pair(IDM_UI_THEME, 42), std::make_pair(IDM_UI_MORE, 56), std::make_pair(IDM_DISPLAY, 64), std::make_pair(IDM_VIEW, 64), std::make_pair(IDM_OPEN, client.right >= px(620) ? 108 : 86)}) {
         x -= px(entry.second);
         SetWindowPos(m_shellButtons[entry.first], nullptr, x, px(20), px(entry.second), px(34), SWP_NOZORDER | SWP_NOACTIVATE);
         x -= px(8);
@@ -120,10 +123,13 @@ void MainWin::paintModernBar(HWND window, HDC dc)
         fill(dc, rect, surface());
         if (width >= px(620)) {
             RECT icon = {px(24), px(20), px(58), px(54)}; round(dc, icon, accent(), accent(), 10);
-            text(dc, L"R", icon, RGB(255,255,255), 15, FW_SEMIBOLD, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            text(dc, L"R", icon, palette().onAccent, 15, FW_SEMIBOLD, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             text(dc, L"Reader", {px(70), px(17), px(166), px(43)}, ink(), 17, FW_SEMIBOLD);
             text(dc, L"静下心，读好书", {px(72), px(42), px(200), px(60)}, muted(), 8);
-            if (width >= px(880) && m_session->isValid()) text(dc, m_session->book()->bookName(), {px(210), px(24), width - px(370), px(51)}, muted(), 9);
+            if (width >= px(940) && m_session->isValid()) text(dc, m_session->book()->bookName(), {px(210), px(24), width - px(420), px(51)}, muted(), 9);
+        } else if (width < px(550)) {
+            RECT icon = {px(20), px(21), px(52), px(53)}; round(dc, icon, accent(), accent());
+            text(dc, L"R", icon, palette().onAccent, 15, FW_SEMIBOLD, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         } else text(dc, L"Reader", {px(20), px(20), px(122), px(52)}, ink(), 15, FW_SEMIBOLD);
         fill(dc, {0, height - 1, width, height}, line());
     } else if (window == m_welcome) {
@@ -131,11 +137,11 @@ void MainWin::paintModernBar(HWND window, HDC dc)
         int center = height / 2;
         if (height >= px(360)) {
         RECT icon = {width / 2 - px(36), center - px(116), width / 2 + px(36), center - px(44)};
-        round(dc, icon, RGB(239,236,253), RGB(239,236,253), 24);
+        round(dc, icon, tint(), tint(), 24);
         RECT book = {width / 2 - px(17), center - px(100), width / 2 + px(17), center - px(60)};
         round(dc, book, accent(), accent(), 6);
-        fill(dc, {book.left + px(6), book.top + px(10), book.right - px(6), book.top + px(12)}, RGB(221,215,255));
-        fill(dc, {book.left + px(6), book.top + px(18), book.right - px(12), book.top + px(20)}, RGB(221,215,255));
+        fill(dc, {book.left + px(6), book.top + px(10), book.right - px(6), book.top + px(12)}, palette().onAccent);
+        fill(dc, {book.left + px(6), book.top + px(18), book.right - px(12), book.top + px(20)}, palette().onAccent);
         }
         bool roomy = height >= px(360);
         text(dc, L"下一段故事，从这里开始", {px(12), center - px(roomy ? 24 : 70), width - px(12), center + px(roomy ? 17 : -35)}, ink(), width >= px(550) ? 22 : 16, FW_SEMIBOLD, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -144,9 +150,9 @@ void MainWin::paintModernBar(HWND window, HDC dc)
     } else {
         fill(dc, rect, background());
         int available = max(px(48), width - px(298));
-        text(dc, caption(window), {px(24), px(6), available, px(28)}, muted(), 9);
+        text(dc, caption(window), {px(24), px(6), available, px(28)}, UiColors::mutedOn(background()), 9);
         RECT track = {px(24), px(37), available, px(41)};
-        round(dc, track, RGB(223,225,235), RGB(223,225,235), 4);
+        round(dc, track, palette().track, palette().track, 4);
         if (m_session->isValid()) {
             track.right = track.left + (int)((track.right - track.left) * max(0.0f, min(1.0f, m_session->progress() / 100.0f)));
             if (track.right > track.left) round(dc, track, accent(), accent(), 4);
@@ -180,6 +186,7 @@ void MainWin::showMoreMenu()
     AppendMenuW(menu, MF_STRING, IDM_UI_AUTOPAGE, L"自动翻页\tSpace");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, IDM_UI_EDIT, L"文本编辑 / 复制\tCtrl+E");
+    AppendMenuW(menu, MF_STRING, IDM_UI_THEME_SETTINGS, L"软件界面主题与颜色");
     AppendMenuW(menu, MF_STRING, IDM_CONFIG, L"翻页与阅读行为");
     AppendMenuW(menu, MF_STRING, IDM_KEYSET, L"快捷键设置");
     AppendMenuW(menu, MF_STRING, IDM_ADVSET, L"高级设置");
@@ -189,8 +196,31 @@ void MainWin::showMoreMenu()
     AppendMenuW(menu, MF_STRING, IDM_UI_FULLSCREEN, L"全屏阅读\tF11");
     AppendMenuW(menu, MF_STRING, IDM_DEFAULT, L"恢复默认设置");
     AppendMenuW(menu, MF_STRING, IDM_ABOUT, L"关于 Reader");
+    // Keep native menu navigation/commands while painting app-owned menus with
+    // the same palette. Restore the borrowed recent-files menu after tracking.
+    struct SavedItem { HMENU menu; UINT position, type; ULONG_PTR data; std::wstring label; };
+    std::vector<SavedItem> saved;
+    std::vector<std::wstring> labels; labels.reserve(GetMenuItemCount(menu) + (recent ? GetMenuItemCount(recent) : 0));
+    for (HMENU popup : {menu, recent}) {
+        if (!popup) continue;
+        MENUINFO info = {}; info.cbSize = sizeof(info); info.fMask = MIM_BACKGROUND; info.hbrBack = ModernUi::brush(true); SetMenuInfo(popup, &info);
+        for (int i = 0; i < GetMenuItemCount(popup); ++i) {
+            MENUITEMINFOW item = {}; item.cbSize = sizeof(item); item.fMask = MIIM_FTYPE | MIIM_DATA;
+            if (!GetMenuItemInfoW(popup, i, TRUE, &item) || item.fType & MFT_SEPARATOR) continue;
+            int length = GetMenuStringW(popup, i, nullptr, 0, MF_BYPOSITION);
+            std::wstring label(length + 1, 0); GetMenuStringW(popup, i, &label[0], length + 1, MF_BYPOSITION); label.resize(length);
+            if (popup == recent) saved.push_back({popup, (UINT)i, item.fType, item.dwItemData, label});
+            labels.push_back(label); item.fType |= MFT_OWNERDRAW; item.dwItemData = (ULONG_PTR)labels.back().c_str();
+            SetMenuItemInfoW(popup, i, TRUE, &item);
+        }
+    }
     RECT button; GetWindowRect(m_shellButtons[IDM_UI_MORE], &button);
     int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTALIGN, button.right, button.bottom + ModernUi::px(6), 0, m_hWnd, nullptr);
+    for (const auto& original : saved) {
+        MENUITEMINFOW item = {}; item.cbSize = sizeof(item); item.fMask = MIIM_FTYPE | MIIM_DATA | MIIM_STRING;
+        item.fType = original.type; item.dwItemData = original.data; item.dwTypeData = const_cast<wchar_t*>(original.label.c_str());
+        SetMenuItemInfoW(original.menu, original.position, TRUE, &item);
+    }
     if (recent) RemoveMenu(menu, 0, MF_BYPOSITION); // borrowed submenu remains owned by m_hMenu
     DestroyMenu(menu);
     if (command) SendMessage(m_hWnd, WM_COMMAND, command, 0);
@@ -222,7 +252,7 @@ bool MainWin::handleShellNavigation(const MSG& message)
         return false;
     }
     std::vector<HWND> order;
-    for (HWND window : {m_shellButtons[IDM_OPEN], m_shellButtons[IDM_VIEW], m_shellButtons[IDM_DISPLAY], m_shellButtons[IDM_UI_MORE],
+    for (HWND window : {m_shellButtons[IDM_OPEN], m_shellButtons[IDM_VIEW], m_shellButtons[IDM_DISPLAY], m_shellButtons[IDM_UI_MORE], m_shellButtons[IDM_UI_THEME],
         m_hTreeView, m_hTreeMark, m_shellButtons[IDM_UI_FOCUS], m_shellButtons[IDM_UI_PREVIOUS], m_shellButtons[IDM_UI_NEXT], m_hWnd})
         if (window && IsWindowVisible(window) && IsWindowEnabled(window)) order.push_back(window);
     if (order.empty()) return false;
@@ -233,4 +263,14 @@ bool MainWin::handleShellNavigation(const MSG& message)
     SendMessage(m_hWnd, WM_UPDATEUISTATE, MAKEWPARAM(UIS_CLEAR, UISF_HIDEFOCUS), 0);
     SetFocus(order[index]);
     return true;
+}
+
+void MainWin::applyUiTheme()
+{
+    SetWindowTextW(m_shellButtons[IDM_UI_THEME], m_data.uiTheme.darkMode ? L"切换到浅色界面" : L"切换到深色界面");
+    updateTreeViewFont();
+    EnumThreadWindows(GetCurrentThreadId(), [](HWND window, LPARAM owner) -> BOOL {
+        if (window == (HWND)owner || GetAncestor(window, GA_ROOTOWNER) == (HWND)owner) ModernUi::windowTheme(window);
+        return TRUE;
+    }, (LPARAM)m_hWnd);
 }

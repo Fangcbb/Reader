@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include "UiPalette.h"
 #include "framework.h"
 #include <string>
 #include <vector>
@@ -551,6 +552,7 @@ struct UpgradeInfo
 
 struct Data
 {
+    UiThemeConfig           uiTheme;
     std::wstring            version;
     WindowInfo              window;
     BackgroundInfo          background;

@@ -105,12 +105,13 @@ private:
         if (message == WM_INITDIALOG) ModernUi::initDialog(hDlg);
         if (message == WM_ERASEBKGND) { ModernUi::paintDialog(hDlg, (HDC)wParam); return TRUE; }
         if (message == WM_CTLCOLORDLG) return (INT_PTR)ModernUi::brush(false);
-        if (message == WM_CTLCOLORSTATIC || message == WM_CTLCOLORBTN)
+        if (message == WM_CTLCOLORSTATIC || message == WM_CTLCOLORBTN || message == WM_CTLCOLOREDIT || message == WM_CTLCOLORLISTBOX)
         {
             HDC dc = (HDC)wParam;
-            SetTextColor(dc, IsWindowEnabled((HWND)lParam) ? ModernUi::ink() : ModernUi::muted());
-            bool card = ModernUi::inCard(hDlg, (HWND)lParam);
-            SetBkColor(dc, card ? ModernUi::surface() : ModernUi::background());
+            bool card = message == WM_CTLCOLOREDIT || message == WM_CTLCOLORLISTBOX || ModernUi::inCard(hDlg, (HWND)lParam);
+            COLORREF color = card ? ModernUi::surface() : ModernUi::background();
+            SetTextColor(dc, IsWindowEnabled((HWND)lParam) ? UiColors::readable(color) : UiColors::mutedOn(color));
+            SetBkColor(dc, color);
             return (INT_PTR)ModernUi::brush(card);
         }
         return pThis->handleMessage(message, wParam, lParam);

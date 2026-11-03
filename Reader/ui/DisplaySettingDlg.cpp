@@ -5,6 +5,7 @@
 #include "Utils.h"
 #include "LayoutText.h"
 #include "IBook.h"
+#include "UiThemeDlg.h"
 
 namespace { const UINT_PTR SCREEN_PICKER_TIMER = 0x5343; }
 
@@ -577,6 +578,8 @@ LRESULT DisplaySettingDlg::handleMessage(UINT message, WPARAM wParam, LPARAM lPa
             return (INT_PTR)TRUE;
         case IDC_CHECK_SAMETEXTSTYLE:
             return onUnifiedTextStyle();
+        case IDC_BUTTON_UI_THEME:
+            { UiThemeDlg dialog(m_hInstance, m_hWnd); dialog.exec(); return TRUE; }
         case IDC_PRESET_PAPER: applyPreset(0); return TRUE;
         case IDC_PRESET_GREEN: applyPreset(1); return TRUE;
         case IDC_PRESET_NIGHT: applyPreset(2); return TRUE;

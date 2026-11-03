@@ -192,6 +192,7 @@ void Settings::defaultData(Data& data)
     DpiAwareness::instance().physicalToLogical(logicalWidth, logicalWidth);
     DpiAwareness::instance().physicalToLogical(logicalHeight, logicalHeight);
 
+    data.uiTheme = UiThemeConfig();
     data.version = Utils::appVersion();
     data.window.mode = DisplayMode::NORMAL;
     data.window.placement.length = sizeof(WINDOWPLACEMENT);

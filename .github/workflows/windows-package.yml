@@ -41,6 +41,9 @@ jobs:
       - name: Full-screen eyedropper regression check
         shell: pwsh
         run: ./scripts/windows-color-picker-test.ps1 -ExePath x64/Release/Reader.exe -OutputPath "$env:RUNNER_TEMP/reader-smoke"
+      - name: Independent light/dark UI and custom-color check
+        shell: pwsh
+        run: ./scripts/windows-ui-theme-test.ps1 -ExePath x64/Release/Reader.exe -OutputPath "$env:RUNNER_TEMP/reader-smoke"
       - name: Package portable EXE
         shell: pwsh
         run: |
