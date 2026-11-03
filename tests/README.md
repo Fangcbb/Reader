@@ -71,3 +71,15 @@ The EPUB text extractor changed, so existing raw character-offset bookmarks and
 saved reading positions can move within EPUB books. Check them when upgrading;
 there is no old-to-new offset migration in this change. Original EPUB CSS, tables
 and complex page designs are still reflowed into the reader's plain-text layout.
+
+## Native screen picker and independent UI themes
+
+The Windows workflow also runs `scripts/windows-color-picker-test.ps1` against
+an external PowerShell-owned color window, and `scripts/windows-ui-theme-test.ps1`
+against the actual Reader process. These check desktop sampling, negative client
+coordinates, click/drag confirmation, cancellation/capture cleanup, custom UI
+colors, persistence and unchanged reading configuration. Pixel comparisons in
+`verify-ui-theme-captures.py` verify that shell colors change while the reading
+area stays identical. `ui_palette_test.cpp` checks 250 custom-color/contrast
+combinations without requiring Windows. Multi-monitor/DPI combinations still
+require suitable physical or virtual displays for coverage.

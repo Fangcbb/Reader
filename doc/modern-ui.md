@@ -49,3 +49,8 @@
 [下载现代 UI Windows x64 测试包](https://github.com/Fangcbb/Reader/actions/runs/41590489364/artifacts/13210041973)
 （GitHub Actions 产物下载需要登录）。测试包沿用基础文件版本 3.2.0.0，
 以此分支和构建记录识别；它与之前发布的首个预览 Release 内容不同。
+
+## 后续更新：全屏取色与独立明暗 UI
+
+右上角现有明暗切换图标，界面颜色设置独立于阅读配色。
+[使用说明、验证结果与最新测试包](screen-picker-and-ui-theme.md)。
