@@ -480,3 +480,9 @@
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif
+
+#define IDD_CLOSE_CHOICE                305
+#define IDC_CLOSE_EXIT                  1230
+#define IDC_CLOSE_TRAY                  1231
+#define IDC_CLOSE_REMEMBER              1232
+#define IDC_CLOSE_ASK                   1233

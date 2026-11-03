@@ -80,7 +80,7 @@ function Start-Reader {
     if ($script:reader.MainWindowTitle -notlike '*第一章*') { throw 'Stored EPUB reading position did not reopen' }
 }
 function Stop-Reader {
-    [void]$script:reader.CloseMainWindow()
+    [void][UiThemeNative]::PostMessage($script:main,0x111,[IntPtr]106,[IntPtr]0)
     if (!$script:reader.WaitForExit(5000)) { throw 'Reader did not exit cleanly' }
 }
 $baseline = Get-Content $profilePath -Raw | ConvertFrom-Json
@@ -172,7 +172,7 @@ try {
     Write-Host $_.ScriptStackTrace
     throw
 } finally {
-    if ($script:reader -and !$script:reader.HasExited) { [void]$script:reader.CloseMainWindow();if (!$script:reader.WaitForExit(5000)) { $script:reader.Kill() } }
+    if ($script:reader -and !$script:reader.HasExited) { [void][UiThemeNative]::PostMessage($script:main,0x111,[IntPtr]106,[IntPtr]0);if (!$script:reader.WaitForExit(5000)) { $script:reader.Kill() } }
 }
 python scripts/verify-ui-theme-captures.py $OutputPath
 if ($LASTEXITCODE -ne 0) { throw 'Independent shell-theme pixel verification failed' }

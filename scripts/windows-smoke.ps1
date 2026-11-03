@@ -130,7 +130,7 @@ try {
     'Modern dialogs, compact layout and focus-mode transitions passed' | Add-Content (Join-Path $OutputPath 'smoke.txt') -Encoding utf8
 } finally {
     if (!$process.HasExited) {
-        [void]$process.CloseMainWindow()
+        [void][ReaderSmokeNative]::PostMessage($main,0x111,[IntPtr]106,[IntPtr]0)
         if (!$process.WaitForExit(5000)) { $process.Kill(); $process.WaitForExit() }
     }
 }

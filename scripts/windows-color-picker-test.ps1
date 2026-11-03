@@ -186,7 +186,7 @@ try {
     End-Pick $x $y
     [void][PickerTestNative]::PostMessage($script:dialog, 0x111, [IntPtr]1, [IntPtr]0)
     Wait-Closed
-    [void]$script:reader.CloseMainWindow()
+    [void][PickerTestNative]::PostMessage($script:reader.MainWindowHandle,0x111,[IntPtr]106,[IntPtr]0)
     if (!$script:reader.WaitForExit(5000)) { throw 'Reader did not exit cleanly for persistence check' }
     $script:reader = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
     Open-Appearance
@@ -199,7 +199,7 @@ try {
 } finally {
     $source.Dispose()
     if (!$script:reader.HasExited) {
-        [void]$script:reader.CloseMainWindow()
+        [void][PickerTestNative]::PostMessage($script:reader.MainWindowHandle,0x111,[IntPtr]106,[IntPtr]0)
         if (!$script:reader.WaitForExit(5000)) { $script:reader.Kill(); $script:reader.WaitForExit() }
     }
 }

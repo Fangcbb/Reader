@@ -211,6 +211,7 @@ void Settings::defaultData(Data& data)
     data.window.exStyle = WS_EX_ACCEPTFILES | WS_EX_LAYERED;
     data.window.hideTaskbar = false;
     data.window.minToTray = false;
+    data.window.askOnClose = true;
     data.window.alpha = 255;
     data.window.textAlpha = 255;
 

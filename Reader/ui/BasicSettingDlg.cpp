@@ -53,6 +53,7 @@ LRESULT BasicSettingDlg::onInitDialog()
 
     // window settings
     CheckDlgButton(m_hWnd, IDC_CHECK_TRAY, data.window.minToTray ? BST_CHECKED : BST_UNCHECKED);
+    CheckDlgButton(m_hWnd, IDC_CLOSE_ASK, data.window.askOnClose ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(m_hWnd, IDC_CHECK_TASKBAR, data.window.hideTaskbar ? BST_CHECKED : BST_UNCHECKED);
 
     centerParent();
@@ -88,6 +89,7 @@ LRESULT BasicSettingDlg::onEndDialog(INT_PTR nResult)
         m_isMinToTrayChanged = data.window.minToTray != (IsDlgButtonChecked(m_hWnd, IDC_CHECK_TRAY) == BST_CHECKED);
         m_isHideTaskbarChanged = data.window.hideTaskbar != (IsDlgButtonChecked(m_hWnd, IDC_CHECK_TASKBAR) == BST_CHECKED);
         data.window.minToTray = IsDlgButtonChecked(m_hWnd, IDC_CHECK_TRAY) == BST_CHECKED;
+        data.window.askOnClose = IsDlgButtonChecked(m_hWnd, IDC_CLOSE_ASK) == BST_CHECKED;
         data.window.hideTaskbar = IsDlgButtonChecked(m_hWnd, IDC_CHECK_TASKBAR) == BST_CHECKED;
 
         Settings::instance().save();

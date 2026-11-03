@@ -18,6 +18,7 @@
 #include "ModernUi.h"
 #include "UiThemeDlg.h"
 #include "ReadingPresetsDlg.h"
+#include "CloseChoiceDlg.h"
 #ifdef ENABLE_NETWORK
 #include "https.h"
 #endif
@@ -536,13 +537,35 @@ LRESULT MainWin::onNcHitTest(UINT message, WPARAM wParam, LPARAM lParam)
 
 LRESULT MainWin::onClose(UINT message, WPARAM wParam, LPARAM lParam)
 {
-    stopAutoPage();
-    if (m_data.window.minToTray)
+    if (m_closePromptOpen) return TRUE;
+    bool toTray = m_data.window.minToTray;
+    if (m_data.window.askOnClose)
     {
-        wcscpy(m_nid.szInfoTitle, loadString(IDS_APP_TITLE).c_str());
-        wcscpy(m_nid.szInfo, L"I'm here!");
-        m_nid.uTimeout = 1000;
-        Shell_NotifyIcon(NIM_MODIFY, &m_nid);
+        m_closePromptOpen = true;
+        pauseAutoPage();
+        CloseChoiceDlg dialog(m_hInstance, m_hWnd, toTray);
+        INT_PTR choice = dialog.exec();
+        m_closePromptOpen = false;
+        if (choice != IDOK) { resumeAutoPage(); return TRUE; }
+        toTray = dialog.toTray;
+        if (dialog.remember)
+        {
+            m_data.window.minToTray = toTray;
+            m_data.window.askOnClose = false;
+            Settings::instance().save();
+        }
+    }
+    stopAutoPage();
+    if (toTray)
+    {
+        // A one-off tray choice also needs an icon, even when not remembered.
+        minToTray(true);
+        if (!Shell_NotifyIcon(NIM_MODIFY, &m_nid))
+        {
+            messageBox(L"无法创建系统托盘图标，窗口将保持打开。请使用“更多 → 退出”关闭软件。",
+                L"Reader", MB_OK | MB_ICONWARNING);
+            return TRUE;
+        }
         showWindow(false);
         return TRUE;
     }

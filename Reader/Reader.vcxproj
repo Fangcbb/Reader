@@ -207,6 +207,7 @@
     <ClInclude Include="ui\ctrls\ListView.h" />
     <ClInclude Include="ui\DisplaySettingDlg.h" />
     <ClInclude Include="ui\UiThemeDlg.h" />
+    <ClInclude Include="ui\CloseChoiceDlg.h" />
     <ClInclude Include="ui\ReadingPresetsDlg.h" />
     <ClInclude Include="common\UiPalette.h" />
     <ClInclude Include="ui\EditController.h" />

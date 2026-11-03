@@ -160,5 +160,6 @@ protected:
     bool            m_isCreating;
     bool            m_autoPageEnabled;
     bool            m_autoPagePaused;
+    bool            m_closePromptOpen = false;
     NOTIFYICONDATA  m_nid;
 };

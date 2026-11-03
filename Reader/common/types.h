@@ -322,6 +322,7 @@ struct WindowInfo
     DWORD exStyle;
     bool hideTaskbar;
     bool minToTray;
+    bool askOnClose = true;
     BYTE alpha;
     BYTE textAlpha;
 };
