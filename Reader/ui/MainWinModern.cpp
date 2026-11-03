@@ -186,6 +186,7 @@ void MainWin::showMoreMenu()
     AppendMenuW(menu, MF_STRING, IDM_UI_AUTOPAGE, L"自动翻页\tSpace");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, IDM_UI_EDIT, L"文本编辑 / 复制\tCtrl+E");
+    AppendMenuW(menu, MF_STRING, IDM_READING_PRESETS, L"阅读预设与场景");
     AppendMenuW(menu, MF_STRING, IDM_UI_THEME_SETTINGS, L"软件界面主题与颜色");
     AppendMenuW(menu, MF_STRING, IDM_CONFIG, L"翻页与阅读行为");
     AppendMenuW(menu, MF_STRING, IDM_KEYSET, L"快捷键设置");

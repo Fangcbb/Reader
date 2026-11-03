@@ -459,6 +459,14 @@
 #define IDC_UI_THEME_RESET              1215
 #define IDC_BUTTON_UI_THEME             1216
 #define WM_UI_THEME_CHANGED             (WM_APP + 711)
+#define IDM_READING_PRESETS              1313
+#define IDD_READING_PRESETS              304
+#define IDC_PRESETS_LIST                 1220
+#define IDC_PRESETS_NAME                 1221
+#define IDC_PRESETS_SAVE                 1222
+#define IDC_PRESETS_DELETE               1223
+#define IDC_PRESETS_STATUS               1224
+#define IDC_BUTTON_READING_PRESETS       1225
 #define IDC_STATIC                      -1
 
 // Next default values for new objects

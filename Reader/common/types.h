@@ -358,6 +358,16 @@ struct BackgroundInfo
     COLORREF color;
 };
 
+struct ReadingPreset
+{
+    std::wstring name;
+    TextInfo styles;
+    BackgroundInfo background;
+    LayoutConfig layout;
+    BYTE alpha = 255;
+    BYTE textAlpha = 255;
+};
+
 struct NetworkInfo
 {
     // proxy
@@ -553,6 +563,7 @@ struct UpgradeInfo
 struct Data
 {
     UiThemeConfig           uiTheme;
+    std::vector<ReadingPreset> readingPresets;
     std::wstring            version;
     WindowInfo              window;
     BackgroundInfo          background;

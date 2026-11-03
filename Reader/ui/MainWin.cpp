@@ -17,6 +17,7 @@
 #include "conv.h"
 #include "ModernUi.h"
 #include "UiThemeDlg.h"
+#include "ReadingPresetsDlg.h"
 #ifdef ENABLE_NETWORK
 #include "https.h"
 #endif
@@ -93,6 +94,16 @@ LRESULT MainWin::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             case IDM_UI_THEME:
                 m_data.uiTheme.darkMode = !m_data.uiTheme.darkMode;
                 Settings::instance().save(); applyUiTheme(); return TRUE;
+            case IDM_READING_PRESETS:
+            {
+                ReadingPresetsDlg dialog(m_hInstance, m_hWnd, ReadingPresetsDlg::current());
+                if (dialog.exec() == IDOK) {
+                    ReadingPresetsDlg::apply(dialog.selected());
+                    SetLayeredWindowAttributes(m_hWnd, 0, max(m_data.window.alpha, (BYTE)MIN_LAYERED_ALPHA), LWA_ALPHA);
+                    m_session->updateStyles(); unloadBgImage(); updateTreeViewFont(); redrawWindow();
+                }
+                return TRUE;
+            }
             case IDM_UI_THEME_SETTINGS:
                 { UiThemeDlg dialog(m_hInstance, m_hWnd); dialog.exec(); return TRUE; }
             case IDM_UI_MORE: showMoreMenu(); return TRUE;

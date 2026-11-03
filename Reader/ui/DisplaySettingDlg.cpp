@@ -6,6 +6,7 @@
 #include "LayoutText.h"
 #include "IBook.h"
 #include "UiThemeDlg.h"
+#include "ReadingPresetsDlg.h"
 
 namespace { const UINT_PTR SCREEN_PICKER_TIMER = 0x5343; }
 
@@ -36,7 +37,7 @@ bool DisplaySettingDlg::isChanged() const
 
 LRESULT DisplaySettingDlg::onInitDialog()
 {
-    m_pickerTooltip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
+    if (!m_pickerTooltip) m_pickerTooltip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
         WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
     if (m_pickerTooltip)
     {
@@ -47,6 +48,7 @@ LRESULT DisplaySettingDlg::onInitDialog()
         SendMessageW(m_pickerTooltip, TTM_ADDTOOLW, 0, (LPARAM)&tip);
         SendMessage(m_pickerTooltip, TTM_SETMAXTIPWIDTH, 0, 300);
     }
+    for (int id : {IDC_COMBO_ALIGNMENT, IDC_COMBO_BIMODE}) SendDlgItemMessage(m_hWnd, id, CB_RESETCONTENT, 0, 0);
     // font settings
     auto &data = Settings::instance().data();
     CheckDlgButton(m_hWnd, IDC_CHECK_SAMETEXTSTYLE, m_styles.unified ? BST_CHECKED : BST_UNCHECKED);
@@ -578,6 +580,20 @@ LRESULT DisplaySettingDlg::handleMessage(UINT message, WPARAM wParam, LPARAM lPa
             return (INT_PTR)TRUE;
         case IDC_CHECK_SAMETEXTSTYLE:
             return onUnifiedTextStyle();
+        case IDC_BUTTON_READING_PRESETS:
+        {
+            if (!loadData()) return TRUE;
+            ReadingPreset candidate; candidate.styles = m_styles; candidate.background = m_background;
+            candidate.layout = m_layout; candidate.alpha = m_alpha; candidate.textAlpha = m_textAlpha;
+            ReadingPresetsDlg dialog(m_hInstance, m_hWnd, candidate);
+            if (dialog.exec() == IDOK) {
+                const auto& preset = dialog.selected();
+                m_styles = preset.styles; m_background = preset.background; m_layout = preset.layout;
+                m_alpha = preset.alpha; m_textAlpha = preset.textAlpha;
+                onInitDialog(); updatePreview();
+            }
+            return TRUE;
+        }
         case IDC_BUTTON_UI_THEME:
             { UiThemeDlg dialog(m_hInstance, m_hWnd); dialog.exec(); return TRUE; }
         case IDC_PRESET_PAPER: applyPreset(0); return TRUE;
