@@ -212,6 +212,7 @@ bool MainWin::handleShellNavigation(const MSG& message)
     for (HWND window : {m_shellButtons[IDM_OPEN], m_shellButtons[IDM_VIEW], m_shellButtons[IDM_DISPLAY], m_shellButtons[IDM_UI_MORE],
         m_hTreeView, m_hTreeMark, m_shellButtons[IDM_UI_FOCUS], m_shellButtons[IDM_UI_PREVIOUS], m_shellButtons[IDM_UI_NEXT], m_hWnd})
         if (window && IsWindowVisible(window) && IsWindowEnabled(window)) order.push_back(window);
+    if (order.empty()) return false;
     auto found = std::find(order.begin(), order.end(), GetFocus());
     bool backwards = GetKeyState(VK_SHIFT) < 0;
     size_t index = found == order.end() ? (backwards ? order.size() - 1 : 0)

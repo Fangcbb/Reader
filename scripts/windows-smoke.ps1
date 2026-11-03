@@ -9,6 +9,10 @@ using System;
 using System.Runtime.InteropServices;
 public class ReaderSmokeNative {
  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+ [StructLayout(LayoutKind.Sequential)] public struct GUITHREADINFO { public uint cbSize, flags; public IntPtr active, focus, capture, menu, moveSize, caret; public RECT caretRect; }
+ [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint process);
+ [DllImport("user32.dll")] public static extern bool GetGUIThreadInfo(uint thread, ref GUITHREADINFO info);
+ [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr hwnd);
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string caption);
@@ -68,7 +72,23 @@ try {
         return [int]$match.Groups[1].Value
     }
     foreach ($dialog in @(@('IDM_DISPLAY', '阅读外观与排版', 'appearance'), @('IDM_CONFIG', '翻页与阅读行为', 'behavior'))) {
-        [void][ReaderSmokeNative]::PostMessage($main, 0x111, [IntPtr](Resource-Id $dialog[0]), [IntPtr]0)
+        if ($dialog[0] -eq 'IDM_DISPLAY') {
+            [uint32]$owner = 0
+            $thread = [ReaderSmokeNative]::GetWindowThreadProcessId($main, [ref]$owner)
+            $info = New-Object ReaderSmokeNative+GUITHREADINFO
+            $info.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($info)
+            $found = $false
+            for ($i = 0; $i -lt 12; $i++) {
+                [void][ReaderSmokeNative]::PostMessage($main, 0x100, [IntPtr]9, [IntPtr]0)
+                Start-Sleep -Milliseconds 80
+                if (![ReaderSmokeNative]::GetGUIThreadInfo($thread, [ref]$info)) { throw 'Unable to inspect keyboard focus' }
+                if ([ReaderSmokeNative]::GetDlgCtrlID($info.focus) -eq (Resource-Id 'IDM_DISPLAY')) { $found = $true; break }
+            }
+            if (!$found) { throw 'Tab navigation did not reach Appearance' }
+            [void][ReaderSmokeNative]::PostMessage($info.focus, 0x100, [IntPtr]13, [IntPtr]0)
+        } else {
+            [void][ReaderSmokeNative]::PostMessage($main, 0x111, [IntPtr](Resource-Id $dialog[0]), [IntPtr]0)
+        }
         $deadline = [DateTime]::UtcNow.AddSeconds(10)
         do { Start-Sleep -Milliseconds 200; $handle = [ReaderSmokeNative]::FindWindow('#32770', $dialog[1]) } while ($handle -eq 0 -and [DateTime]::UtcNow -lt $deadline)
         if ($handle -eq 0) { throw "Settings dialog did not open: $($dialog[0])" }
