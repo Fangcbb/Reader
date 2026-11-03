@@ -36,6 +36,9 @@ public class CaptionNative {
  // Find a real non-client button by its Windows hit-test result, avoiding
  // assumptions about caption height, DPI or the active Windows visual style.
  public static void ClickButton(IntPtr w,int hit) {
+   SetWindowPos(w,new IntPtr(-1),0,0,0,0,3);
+   SetForegroundWindow(w);
+   System.Threading.Thread.Sleep(400);
    RECT r; if (!GetWindowRect(w,out r)) throw new Exception("Missing main window");
    int left=int.MaxValue,top=int.MaxValue,right=int.MinValue,bottom=int.MinValue;
    for (int y=r.Top+8; y<Math.Min(r.Top+70,r.Bottom); y+=3)
@@ -45,11 +48,12 @@ public class CaptionNative {
        left=Math.Min(left,x);right=Math.Max(right,x);top=Math.Min(top,y);bottom=Math.Max(bottom,y);
      }
    if (left==int.MaxValue) throw new Exception("Caption hit target not found: "+hit);
-   SetWindowPos(w,new IntPtr(-1),0,0,0,0,3);
-   SetForegroundWindow(w); SetCursorPos((left+right)/2,(top+bottom)/2);
+   SetCursorPos((left+right)/2,(top+bottom)/2);
    System.Threading.Thread.Sleep(200);
    var p=new POINT { X=(left+right)/2,Y=(top+bottom)/2 };
    if (GetAncestor(WindowFromPoint(p),2)!=w) throw new Exception("Caption is covered by another window");
+   var actual=SendMessage(w,0x84,IntPtr.Zero,new IntPtr(unchecked((int)(((uint)(ushort)p.Y<<16)|(ushort)p.X)))).ToInt32();
+   if (actual!=hit) throw new Exception("Caption moved during click: expected="+hit+" actual="+actual);
    Console.WriteLine("Physical caption click: hit="+hit+" x="+p.X+" y="+p.Y);
    mouse_event(2,0,0,0,UIntPtr.Zero);
    System.Threading.Thread.Sleep(100);
