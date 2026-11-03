@@ -4,6 +4,7 @@ param(
     [switch]$ExpectBlocked
 )
 $ErrorActionPreference = 'Stop'
+$env:READER_CAPTION_TRACE = '1'
 $source = (Resolve-Path $ExePath).Path
 # Isolate settings from other smoke checks and from the published baseline.
 New-Item -ItemType Directory -Force $OutputPath | Out-Null
@@ -206,6 +207,7 @@ try {
 } catch {
     if ($reader -and !$reader.HasExited) {
         Save-Prompt $main 'caption-failure'
+        Get-Content (Join-Path (Split-Path $exe) 'caption-trace.txt') -ErrorAction SilentlyContinue | Write-Host
         Write-Host "Failure state: visible=$([CaptionNative]::IsWindowVisible($main)) iconic=$([CaptionNative]::IsIconic($main)) zoomed=$([CaptionNative]::IsZoomed($main))"
     }
     throw
