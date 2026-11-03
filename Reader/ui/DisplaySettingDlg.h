@@ -27,6 +27,7 @@ protected:
 
 protected:
     void updatePreview();
+    void applyPreset(int preset);
     std::wstring getBorder(const RECT& rect);
     bool getBorder(const wchar_t* str, RECT& rect, bool tips = false);
     void bindSliderEditPair(int sliderId, int editId, BYTE& value, int minValue, int maxValue);

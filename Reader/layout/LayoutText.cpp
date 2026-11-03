@@ -18,7 +18,7 @@ LayoutText::~LayoutText()
 
 int LayoutText::findPrevPageIndex(int end, int width, int height)
 {
-    m_config = toPhysical(Settings::instance().data().layout);
+    m_config = toPhysical(m_configOverride ? *m_configOverride : Settings::instance().data().layout);
     PageInfo pageInfo;
     pageInfo.start = end;
     pageInfo.length = 0;
@@ -45,7 +45,6 @@ int LayoutText::findPrevPageIndex(int end, int width, int height)
 
     int index = end;
     int usedH = 0;
-    int maxLineW = 0;
 
     int searchLen;
     int lineLen;
@@ -57,6 +56,7 @@ int LayoutText::findPrevPageIndex(int end, int width, int height)
     int start = m_source->hasCover() ? 1 : 0;
     while (index > start)
     {
+        if (m_source->isCover(index - 1)) break;
         searchLen = min(maxSearchLength(), index);
         // [curpos - len, curpos)
         if (!Utils::prevLine(text + index, searchLen, &lineLen, &crlfLen, &isBlankLine, &prefixBlankLen, &suffixBlankLen))
@@ -91,7 +91,6 @@ int LayoutText::findPrevPageIndex(int end, int width, int height)
 
             pageInfo.lines.insert(pageInfo.lines.begin(), line);
             usedH += realH;
-            maxLineW = max(maxLineW, line.x + line.w);
         }
 
         if (index > 0 && ((m_config.splitChapter && m_source->isChapterStart(index)) || !m_source->isChapterContinuous(false, index)))
@@ -106,7 +105,7 @@ DONE:
         const LineInfo& last = pageInfo.lines.back();
         pageInfo.length = last.start + last.length - pageInfo.start;
     }
-    if (m_config.alignment == Alignment::CENTER) pageInfo.x += (readerW - maxLineW) / 2;
+
     return pageInfo.start;
 }
 
@@ -125,7 +124,7 @@ int LayoutText::findPrevLineIndex(int end, int n, int width)
     const int total = m_source->length();
     if (!text || end <= 0 || end > total) return end;
 
-    m_config = toPhysical(Settings::instance().data().layout);
+    m_config = toPhysical(m_configOverride ? *m_configOverride : Settings::instance().data().layout);
     const int readerW = width - m_config.borderL - m_config.borderR;
     if (readerW <= 0) return end;
 
@@ -133,6 +132,7 @@ int LayoutText::findPrevLineIndex(int end, int n, int width)
     int start = m_source->hasCover() ? 1 : 0;
     while (index > start && n > 0)
     {
+        if (m_source->isCover(index - 1)) return index - 1;
         int searchLen = min(maxSearchLength(), index);
         // [curpos - len, curpos)
         int lineLen;
@@ -182,7 +182,7 @@ int LayoutText::findPrevLineIndex(int end, int n, int width)
 
 PageInfo LayoutText::layout(int start, int width, int height)
 {
-    m_config = toPhysical(Settings::instance().data().layout);
+    m_config = toPhysical(m_configOverride ? *m_configOverride : Settings::instance().data().layout);
     PageInfo pageInfo;
     pageInfo.start = start;
     pageInfo.length = 0;
@@ -211,7 +211,6 @@ PageInfo LayoutText::layout(int start, int width, int height)
 
     int index = start;
     int usedH = 0;
-    int maxLineW = 0;
 
     int searchLen;
     int lineLen;
@@ -222,6 +221,7 @@ PageInfo LayoutText::layout(int start, int width, int height)
 
     while (index < total)
     {
+        if (m_source->isCover(index)) break;
         searchLen = min(maxSearchLength(), (total - index));
         // [curpos, curpos + len)
         if (!Utils::nextLine(text + index, searchLen, &lineLen, &crlfLen, &isBlankLine, &prefixBlankLen, &suffixBlankLen))
@@ -247,6 +247,12 @@ PageInfo LayoutText::layout(int start, int width, int height)
         lines.back().length += crlfLen;
         if (crlfLen == 0) lines.back().gap = m_config.lineGap;
 
+        if (!pageInfo.lines.empty() && m_source->isTitleLine(index))
+        {
+            int headingHeight = 0;
+            for (const auto& line : lines) headingHeight += line.h + line.gap;
+            if (usedH + headingHeight + emptyLineHeight() > readerH) goto DONE;
+        }
         for (const LineInfo& line : lines)
         {
             if (usedH + line.h > readerH)
@@ -254,7 +260,6 @@ PageInfo LayoutText::layout(int start, int width, int height)
 
             pageInfo.lines.push_back(line);
             usedH += line.h + line.gap;
-            maxLineW = max(maxLineW, line.x + line.w);
         }
 
         index += lineLen + crlfLen;
@@ -269,7 +274,11 @@ DONE:
         const LineInfo& last = pageInfo.lines.back();
         pageInfo.length = last.start + last.length - pageInfo.start;
     }
-    if (m_config.alignment == Alignment::CENTER) pageInfo.x += (readerW - maxLineW) / 2;
+    // Blank lines (including hidden EPUB picture markers) still consume
+    // source positions. In particular, an image-only final chapter must not
+    // become a zero-length page when chapter images are switched off.
+    pageInfo.length = max(pageInfo.length, index - start);
+
     return pageInfo;
 }
 
@@ -285,7 +294,7 @@ bool LayoutText::paragraphToLines(int start, int length, int renderW, std::vecto
     initCharStack(start, length);
 
     int indentW = 0;
-    if (!isTitle && isHead && m_config.indent)
+    if (!isTitle && isHead && m_config.indent && m_config.alignment == Alignment::LEFT)
     {
         // skip blanks character
         while (!m_stack.empty() && Utils::isBlank(text[m_stack.top().index])) m_stack.pop();
@@ -418,6 +427,8 @@ bool LayoutText::paragraphToLines(int start, int length, int renderW, std::vecto
     back.length = start + length - back.start;
     back.gap = m_config.paragraphGap;
 
+    if (m_config.alignment == Alignment::CENTER)
+        for (auto& line : lines) line.x = (renderW - line.w) / 2;
     validateLines(text, start, length, renderW, m_config.charGap, lines);
     return true;
 }
@@ -449,8 +460,14 @@ void LayoutText::initCharStack(int start, int length)
                 tsIdx = m_styles.textIdx;
         }
 
-        TextMetrics tm = m_measurer->measureText(text + i, 1, -1, tsIdx);
-        m_stack.push({ i, tsIdx, tm.width, tm.height });
+        int units = 1;
+        if (i > start && text[i] >= 0xDC00 && text[i] <= 0xDFFF && text[i - 1] >= 0xD800 && text[i - 1] <= 0xDBFF)
+        {
+            --i;
+            units = 2;
+        }
+        TextMetrics tm = m_measurer->measureText(text + i, units, -1, tsIdx);
+        m_stack.push({ i, tsIdx, tm.width, tm.height, units });
     }
 }
 
@@ -526,7 +543,7 @@ void LayoutText::validateLines(const wchar_t* text, int start, int length, int r
 
         ASSERT(line.start == start);
         ASSERT(line.length == 0);
-        ASSERT(line.x == 0);
+        ASSERT(line.x == (m_config.alignment == Alignment::CENTER ? renderW / 2 : 0));
         ASSERT(line.w == 0);
         ASSERT(line.h == emptyLineHeight());
         ASSERT(line.chars.empty());
@@ -562,6 +579,7 @@ void LayoutText::validateLines(const wchar_t* text, int start, int length, int r
 
             ASSERT(ch.index >= line.start);
             ASSERT(ch.index < lineEnd);
+            ASSERT(ch.length >= 1 && ch.length <= 2 && ch.index + ch.length <= lineEnd);
             ASSERT(ch.index > lastIndex);
 #if ENABLE_TAG
             ASSERT(ch.tsIdx >= 0 && ch.tsIdx < Setting::instance().data().tags.size() + 2);
@@ -590,7 +608,7 @@ void LayoutText::validateLines(const wchar_t* text, int start, int length, int r
             if (i > 0) contentW += cGap;
             contentW += ch.w;
             contentH = max(contentH, ch.h);
-            lastIndex = ch.index;
+            lastIndex = ch.index + ch.length - 1;
         }
 
         for (int i = lastIndex + 1; i < lineEnd; ++i)

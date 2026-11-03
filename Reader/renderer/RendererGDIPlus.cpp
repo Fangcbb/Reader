@@ -1,5 +1,6 @@
 #pragma once
 #include "RendererGDIPlus.h"
+#include "ImageFit.h"
 
 //#pragma comment(lib, "Msimg32.lib")
 //#pragma comment(lib, "gdiplus.lib")
@@ -21,6 +22,7 @@ ImageGDIPlus::~ImageGDIPlus()
         delete m_bitmap;
         m_bitmap = nullptr;
     }
+    if (m_stream) { m_stream->Release(); m_stream = nullptr; }
 }
 
 int ImageGDIPlus::width() const
@@ -544,34 +546,18 @@ void RendererGDIPlus::drawImage(const Image* image, const RECT& rect, bool keepR
         return;
     }
 
-    Gdiplus::Rect src(0, 0, pBitmap->GetWidth(), pBitmap->GetHeight());
-    Gdiplus::Rect dst(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
-    if (keepRatio)
-    {
-        int w = rect.right - rect.left;
-        int h = rect.bottom - rect.top;
-        int bw = pBitmap->GetWidth();
-        int bh = pBitmap->GetHeight();
-        double d = ((double)w) / h;
-        double bd = ((double)bw) / bh;
-        if (bd > d)
-        {
-            // image is too wide
-            bw = w;
-            bh = (int)(bw / bd);
-        }
-        else if (bd < d)
-        {
-            // image is too high
-            bh = h;
-            bw = (int)(bd * bh);
-        }
-        dst.X = (w - bw) / 2;
-        dst.Y = (h - bh) / 2;
-        dst.Width = bw;
-        dst.Height = bh;
-    }
-    m_graphics->DrawImage(pBitmap, dst, src.X, src.Y, src.Width, src.Height, Gdiplus::UnitPixel);
+    if (rect.right <= rect.left || rect.bottom <= rect.top || !pBitmap->GetWidth() || !pBitmap->GetHeight()) return;
+    ImageFit::Rect target = {rect.left, rect.top, rect.right, rect.bottom};
+    if (keepRatio) target = ImageFit::contain(pBitmap->GetWidth(), pBitmap->GetHeight(), target);
+    Gdiplus::Rect dst(target.left, target.top, target.right - target.left, target.bottom - target.top);
+    // Mirror edge pixels during bicubic sampling to prevent dark fringes on
+    // transparent artwork and thin white borders around downscaled covers.
+    Gdiplus::ImageAttributes attributes;
+    attributes.SetWrapMode(Gdiplus::WrapModeTileFlipXY);
+    auto oldPixelOffset = m_graphics->GetPixelOffsetMode();
+    m_graphics->SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
+    m_graphics->DrawImage(pBitmap, dst, 0, 0, pBitmap->GetWidth(), pBitmap->GetHeight(), Gdiplus::UnitPixel, &attributes);
+    m_graphics->SetPixelOffsetMode(oldPixelOffset);
 }
 
 Image* RendererGDIPlus::loadImageFromPath(const wchar_t* path)
@@ -604,6 +590,7 @@ Image* RendererGDIPlus::loadImageFromStream(const BYTE* data, int size)
     }
     IStream* pStream = NULL;
     pStream = SHCreateMemStream((const BYTE*)data, size);
+    if (!pStream) return nullptr;
     Gdiplus::Bitmap* pBitmap = Gdiplus::Bitmap::FromStream(pStream);
     if (!pBitmap || pBitmap->GetLastStatus() != Gdiplus::Ok)
     {
@@ -617,8 +604,8 @@ Image* RendererGDIPlus::loadImageFromStream(const BYTE* data, int size)
 
     ImageGDIPlus* image = new ImageGDIPlus;
     image->m_bitmap = pBitmap;
+    image->m_stream = pStream;
     image->decode();
-    pStream->Release();
     return image;
 }
 
@@ -644,8 +631,8 @@ Image* RendererGDIPlus::loadImageFromResource(HINSTANCE hInstance, UINT resource
 
         ImageGDIPlus* image = new ImageGDIPlus;
         image->m_bitmap = pBitmap;
+        image->m_stream = pStream;
         image->decode();
-        freeStream(pStream);
         return image;
     }
     return nullptr;

@@ -37,6 +37,7 @@ public:
     virtual int            chapterCount() const = 0;
     virtual const Chapter* chapter(int chapterIndex) const = 0;
     virtual const Cover*   cover() const = 0;
+    virtual const Cover*   coverAt(int index) const { return isCover(index) ? cover() : nullptr; }
     virtual bool           isEditSupport() const = 0;
     virtual bool           editText(int start, int srcLen, wchar_t* const dstText, int dstLen) = 0;
     virtual bool           isFetchSupport() const = 0;

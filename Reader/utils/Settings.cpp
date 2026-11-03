@@ -216,7 +216,7 @@ void Settings::defaultData(Data& data)
     data.background.enableImage = false;
     data.background.fileName = L"";
     data.background.mode = WrapMode::TILEFLIP;
-    data.background.color = RGB(255, 255, 255);
+    data.background.color = RGB(247, 243, 233);
 
     data.network.enableProxy = false;
     data.network.port = 0;
@@ -235,24 +235,26 @@ void Settings::defaultData(Data& data)
 
     defaultKeys(data.keyset);
 
-    data.styles.unified = true;
+    data.styles.unified = false;
     data.styles.viewFont = false;
     data.styles.textColor = DEFAULT_TEXT_COLOR;
     data.styles.titleColor = DEFAULT_TEXT_COLOR;
     defaultFont(data.styles.textFont);
     defaultFont(data.styles.titleFont);
+    data.styles.titleFont.lfWeight = FW_SEMIBOLD;
 
-    data.layout.borderL = 2;
-    data.layout.borderT = 2;
-    data.layout.borderR = 2;
-    data.layout.borderB = 2;
-    data.layout.charGap = 2;
-    data.layout.lineGap = 5;
+    data.layout.borderL = 18;
+    data.layout.borderT = 18;
+    data.layout.borderR = 18;
+    data.layout.borderB = 18;
+    data.layout.charGap = 0;
+    data.layout.lineGap = 8;
     data.layout.paragraphGap = 15;
     data.layout.indent = true;
     data.layout.noBlansLine = true;
-    data.layout.wordWrap = false;
-    data.layout.splitChapter = false;
+    data.layout.wordWrap = true;
+    data.layout.splitChapter = true;
+    data.layout.epubImages = true;
     data.layout.alignment = Alignment::LEFT;
 
     data.chapterRule.rule = ChapterRule::Rule::DEFAULT;

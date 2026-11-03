@@ -322,8 +322,8 @@ LRESULT MainWin::onCreate()
 {
     m_hMenu = GetMenu(m_hWnd);
     m_hStatusBar = CreateWindow(STATUSCLASSNAME, L"Status Bar.", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
-    m_hTreeView = CreateWindow(WC_TREEVIEW, L"Tree View", /*WS_VISIBLE | */WS_CHILD /*| WS_BORDER*/ | TVS_HASLINES | TVS_NOHSCROLL | TVS_NOTOOLTIPS | TVS_LINESATROOT, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
-    m_hTreeMark = CreateWindow(WC_TREEVIEW, L"Tree Mark", /*WS_VISIBLE | */WS_CHILD /*| WS_BORDER*/ | TVS_HASLINES | TVS_NOHSCROLL | TVS_NOTOOLTIPS | TVS_LINESATROOT, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
+    m_hTreeView = CreateWindow(WC_TREEVIEW, L"Tree View", /*WS_VISIBLE | */WS_CHILD /*| WS_BORDER*/ | TVS_FULLROWSELECT | TVS_SHOWSELALWAYS | TVS_INFOTIP, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
+    m_hTreeMark = CreateWindow(WC_TREEVIEW, L"Tree Mark", /*WS_VISIBLE | */WS_CHILD /*| WS_BORDER*/ | TVS_FULLROWSELECT | TVS_SHOWSELALWAYS | TVS_INFOTIP, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
     m_uFindMsgId = RegisterWindowMessage(FINDMSGSTRING);
     m_session = new BookSession(m_hWnd);
     Settings::instance().setHwnd(m_hWnd);
@@ -366,6 +366,21 @@ LRESULT MainWin::onPaint(HDC hdc)
         rc.right = rc.left + m_imgLoading->width();
         rc.bottom = rc.top + m_imgLoading->height();
         IRenderer::instance()->drawImage(m_imgLoading, rc);
+    }
+    else if (!m_session->isValid())
+    {
+        const int width = rcPaint.right - rcPaint.left;
+        const int height = rcPaint.bottom - rcPaint.top;
+        const wchar_t* lines[] = {L"Reader", L"让阅读回到文字本身", L"Ctrl + O 打开书籍", L"支持 TXT · EPUB · MOBI"};
+        int y = max(12, height / 2 - 72);
+        for (const auto* text : lines)
+        {
+            auto metrics = IRenderer::instance()->measurer()->measureText(text, -1, max(1, width - 24), 0);
+            int x = max(12, (width - metrics.width) / 2);
+            RECT line = {x, y, width - 12, y + metrics.height};
+            IRenderer::instance()->drawText(text, -1, line, 0);
+            y += metrics.height + 16;
+        }
     }
     else
     {
@@ -2373,6 +2388,14 @@ void MainWin::updateStatusBar()
 
 void MainWin::updateTreeViewFont()
 {
+    // Apply palette even when the font itself is unchanged.
+    for (HWND tree : {m_hTreeView, m_hTreeMark})
+    {
+        TreeView_SetBkColor(tree, m_data.background.color);
+        TreeView_SetTextColor(tree, m_data.styles.textColor);
+        TreeView_SetLineColor(tree, m_data.styles.textColor);
+        SendMessage(tree, TVM_SETINDENT, 16, 0);
+    }
     static HFONT curHFont = nullptr;
     static LOGFONTW curFont = {0};
 

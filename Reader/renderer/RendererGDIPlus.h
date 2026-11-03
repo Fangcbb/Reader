@@ -21,6 +21,7 @@ public:
     void decode();
 public:
     Gdiplus::Bitmap* m_bitmap;
+    IStream* m_stream = nullptr; // keep FromStream backing storage alive until bitmap destruction
     int m_frameCount;
     int m_frameIndex;
 };

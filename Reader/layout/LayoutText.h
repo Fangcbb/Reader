@@ -31,6 +31,7 @@ private:
 
 public:
     LayoutText();
+    void setConfigOverride(const LayoutConfig* config) { m_configOverride = config; }
     virtual          ~LayoutText();
     virtual int      findPrevPageIndex(int end, int width, int height);
     virtual int      findPrevLineIndex(int end, int n, int width);
@@ -50,4 +51,5 @@ protected:
 protected:
     ArrayStack<CharInfo> m_stack;
     LayoutConfig m_config;
+    const LayoutConfig* m_configOverride = nullptr;
 };

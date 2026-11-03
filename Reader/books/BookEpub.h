@@ -56,6 +56,9 @@ public:
     BookEpub(const std::wstring& fileName);
     virtual ~BookEpub();
     virtual BookType type() const;
+    virtual bool isCover(int index) const;
+    virtual bool isTitleLine(int index) const;
+    virtual const Cover* coverAt(int index) const;
 
 protected:
     virtual BookErrno parseBook();
@@ -67,6 +70,7 @@ protected:
     virtual bool parseNcx(Files& files);
     virtual bool parseCover(Files& files);
     virtual bool parseChapters(Files& files);
+    bool parseLegacyChapters(Files& files);
     virtual bool parseOps(FileData& file, wchar_t **text, int *len, wchar_t **title, int *tlen, bool needTitle);
     virtual bool splitHtmlByNavpoints(Files& files);
 
@@ -77,4 +81,7 @@ protected:
 
 protected:
     Epub* m_epub;
+    std::map<int, std::vector<char>> m_pictureData;
+    std::map<int, Cover> m_pictures;
+    std::vector<std::pair<int, int>> m_headingRanges;
 };

@@ -1,0 +1,61 @@
+name: Windows x64 package
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Build Release x64 with MSVC
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$installation) { throw 'MSVC installation not found' }
+          $msbuild = Join-Path $installation 'MSBuild\Current\Bin\MSBuild.exe'
+          & $msbuild Reader.sln /m:2 /p:Configuration=Release /p:Platform=x64 /t:Build /v:minimal /fl /flp:logfile=windows-build.log
+          if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
+          if (!(Test-Path 'x64/Release/Reader.exe')) { throw 'Reader.exe was not produced' }
+          $version = (Get-Item 'x64/Release/Reader.exe').VersionInfo.FileVersion
+          if ($version -ne '3.2.0.0') { throw "Unexpected EXE version: $version" }
+      - name: Create EPUB fixtures
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check Pillow==11.3.0
+          if ($LASTEXITCODE -ne 0) { throw 'Pillow install failed' }
+          python tests/prepare_epub_integration.py "$env:RUNNER_TEMP/reader-fixtures"
+          if ($LASTEXITCODE -ne 0) { throw 'EPUB fixtures failed' }
+      - name: Native Windows startup and EPUB smoke check
+        shell: pwsh
+        run: ./scripts/windows-smoke.ps1 -ExePath x64/Release/Reader.exe -BookPath "$env:RUNNER_TEMP/reader-fixtures/epub3.epub" -OutputPath "$env:RUNNER_TEMP/reader-smoke"
+      - name: Package portable EXE
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/package | Out-Null
+          Copy-Item x64/Release/Reader.exe dist/Reader-v3.2.0-preview.1-windows-x64.exe
+          Copy-Item x64/Release/Reader.exe dist/package/Reader.exe
+          Copy-Item misc/readme.txt dist/package/readme.txt
+          Copy-Item doc/epub-validation.md dist/package/epub-validation.md
+          Copy-Item doc/release-v3.2.0-preview.1.md dist/package/RELEASE-NOTES.md
+          Compress-Archive -Path dist/package/* -DestinationPath dist/Reader-v3.2.0-preview.1-windows-x64.zip
+          Get-ChildItem dist -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+      - name: Upload package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Reader-v3.2.0-preview.1-windows-x64
+          path: dist/*.*
+          if-no-files-found: error
+      - name: Upload build and smoke evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-build-evidence
+          path: |
+            windows-build.log
+            ${{ runner.temp }}/reader-smoke/*
+          if-no-files-found: warn

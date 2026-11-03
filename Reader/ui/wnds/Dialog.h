@@ -40,14 +40,14 @@ public:
     std::wstring getDlgItemTextW(int itemId)
     {
         wchar_t buffer[MAX_URL_LENGTH] = {0};
-        GetDlgItemTextW(m_hWnd, itemId, buffer, sizeof(buffer));
+        GetDlgItemTextW(m_hWnd, itemId, buffer, ARRAYSIZE(buffer));
         return std::wstring(buffer);
     }
 
     std::string getDlgItemTextA(int itemId)
     {
         wchar_t buffer[MAX_URL_LENGTH] = {0};
-        GetDlgItemTextW(m_hWnd, itemId, buffer, sizeof(buffer));
+        GetDlgItemTextW(m_hWnd, itemId, buffer, ARRAYSIZE(buffer));
         return toUtf8(buffer);
     }
 

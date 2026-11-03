@@ -433,6 +433,10 @@
 #define IDM_ADVSET                      32802
 #define IDM_TAGSET                      32803
 #define IDM_ONLINE                      32804
+#define IDC_PRESET_PAPER                1200
+#define IDC_PRESET_GREEN                1201
+#define IDC_PRESET_NIGHT                1202
+#define IDC_CHECK_EPUB_IMAGES           1203
 #define IDC_STATIC                      -1
 
 // Next default values for new objects

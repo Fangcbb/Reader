@@ -3,6 +3,8 @@
 #include "resource.h"
 #include "DpiAwareness.h"
 #include "Utils.h"
+#include "LayoutText.h"
+#include "IBook.h"
 
 DisplaySettingDlg::DisplaySettingDlg(HINSTANCE hInstance, HWND hParent)
     : Dialog(hInstance, hParent, IDD_DISPLAYSETTING)
@@ -63,6 +65,7 @@ LRESULT DisplaySettingDlg::onInitDialog()
     SendMessage(GetDlgItem(m_hWnd, IDC_COMBO_ALIGNMENT), CB_ADDSTRING, 0, (LPARAM)loadString(IDS_CENTER).c_str());
     SendMessage(GetDlgItem(m_hWnd, IDC_COMBO_ALIGNMENT), CB_SETCURSEL, (int)m_layout.alignment, NULL);
 
+    CheckDlgButton(m_hWnd, IDC_CHECK_EPUB_IMAGES, m_layout.epubImages ? BST_CHECKED : BST_UNCHECKED);
     centerParent();
     return TRUE;
 }
@@ -209,84 +212,89 @@ LRESULT DisplaySettingDlg::onUpdatePreview(HDC hdc, RECT rect)
     // fill background
     HDC hMemdc = CreateCompatibleDC(hdc);
     HBITMAP hBitmap = CreateCompatibleBitmap(hdc, rect.right - rect.left, rect.bottom - rect.top);
-    SelectObject(hMemdc, hBitmap);
+    HGDIOBJ oldBitmap = SelectObject(hMemdc, hBitmap);
     FillRect(hMemdc, &rect, GetSysColorBrush(COLOR_BTNFACE));
 
-    const wchar_t* TITLE1 = L"\u6807\u9898\u9884\u89c8";
-    const wchar_t* TITLE2 = L"Title preview";
-    const wchar_t* TEXT1  = L"\u6b63\u6587\u9884\u89c8\r\n";
-    const wchar_t* TEXT2  = L"Text preview";
-
+    class PreviewSource : public ISource
+    {
+    public:
+        const wchar_t* text() const override { return L"第一章 · 阅读时光\n翻开一本书，让文字自然流动。调整字体、留白与行距，找到适合自己的阅读节奏。\nA quiet page, a little space, and time to read.\n新的章节，从这里开始。\n"; }
+        int length() const override { return (int)wcslen(text()); }
+        bool isTitleLine(int index) const override { return index < (int)(wcschr(text(), L'\n') - text()); }
+        bool isChapterStart(int index) const override { return index == 0; }
+        bool isChapterContinuous(bool, int) const override { return true; }
+        bool isCover(int) const override { return false; }
+        bool hasCover() const override { return false; }
+    } source;
     TextStyles textStyles(2);
     textStyles[0] = TextStyle(m_styles.textFont, m_textAlpha << 24 | m_styles.textColor);
     textStyles[1] = TextStyle(m_styles.titleFont, m_textAlpha << 24 | m_styles.titleColor);
-
-    IRenderer::instance()->beginPaint(m_hWnd, hMemdc, rect, textStyles, true);
+    auto* renderer = IRenderer::instance();
+    renderer->beginPaint(m_hWnd, hMemdc, rect, textStyles, true);
     if (m_background.enableImage)
     {
-        Image* image1 = IRenderer::instance()->loadImageFromPath(m_background.fileName.c_str());
-        Image* image2 = IRenderer::instance()->createImageFromBGImage(image1, m_alpha, rect.right - rect.left, rect.bottom - rect.top, m_background.mode);
-        delete image1;
-        IRenderer::instance()->drawImage(image2, rect);
-        delete image2;
+        Image* image = renderer->loadImageFromPath(m_background.fileName.c_str());
+        Image* background = renderer->createImageFromBGImage(image, m_alpha, rect.right, rect.bottom, m_background.mode);
+        delete image;
+        renderer->drawImage(background, rect);
+        delete background;
     }
-    else
+    else renderer->fillRect(m_alpha << 24 | m_background.color, rect);
+    LayoutText layout;
+    layout.setSource(&source);
+    layout.setMeasurer(renderer->measurer());
+    layout.setTextStyle({0, m_styles.unified ? 0 : 1});
+    layout.setConfigOverride(&m_layout);
+    auto page = layout.layout(0, rect.right - rect.left, rect.bottom - rect.top);
+    int y = page.y;
+    for (const auto& line : page.lines)
     {
-        IRenderer::instance()->fillRect(m_alpha << 24 | m_background.color, rect);
+        int x = page.x + line.x;
+        for (const auto& ch : line.chars)
+        {
+            RECT glyph = {x, y + line.h - ch.h, x + ch.w, y + line.h};
+            renderer->drawText(source.text() + ch.index, ch.length, glyph, ch.tsIdx);
+            x += ch.w + page.cGap;
+        }
+        y += line.h + line.gap;
     }
-
-    int borderL = m_layout.borderL;
-    int borderT = m_layout.borderT;
-    int borderR = m_layout.borderR;
-    int borderB = m_layout.borderB;
-    int charGap = m_layout.charGap;
-    int lineGap = m_layout.lineGap;
-    int paragraphGap = m_layout.paragraphGap;
-    DpiAwareness::instance().logicalToPhysical(borderL, borderL);
-    DpiAwareness::instance().logicalToPhysical(borderT, borderT);
-    DpiAwareness::instance().logicalToPhysical(borderR, borderR);
-    DpiAwareness::instance().logicalToPhysical(borderB, borderB);
-    DpiAwareness::instance().logicalToPhysical(charGap, charGap);
-    DpiAwareness::instance().logicalToPhysical(lineGap, lineGap);
-    DpiAwareness::instance().logicalToPhysical(paragraphGap, paragraphGap);
-
-    int maxWidth = rect.right - rect.left - borderL - borderR;
-    int maxHeight = rect.bottom - rect.top - borderT - borderB;
-    IMeasurer* measurer = IRenderer::instance()->measurer();
-    auto tmTile1 = measurer->measureText(TITLE1, -1, maxWidth, m_styles.unified ? 0 : 1);
-    auto tmTile2 = measurer->measureText(TITLE2, -1, maxWidth, m_styles.unified ? 0 : 1);
-    auto tmText1 = measurer->measureText(TEXT1, -1, maxWidth, 0);
-    auto tmText2 = measurer->measureText(TEXT2, -1, maxWidth, 0);
-    int totalHeight = tmTile1.height + tmTile2.height + tmText1.height + tmText2.height + lineGap * 3;
-
-    RECT rcDraw1, rcDraw2, rcDraw3, rcDraw4;
-    rcDraw1.left = (rect.right - rect.left - tmTile1.width) / 2;
-    rcDraw1.right = rcDraw1.left + tmTile1.width;
-    rcDraw1.top = m_layout.borderT + (rect.bottom - rect.top - totalHeight) / 2;
-    rcDraw1.bottom = rcDraw1.top + tmTile1.height;
-    rcDraw2.left = (rect.right - rect.left - tmText1.width) / 2;
-    rcDraw2.right = rcDraw2.left + tmText1.width;
-    rcDraw2.top = rcDraw1.bottom + lineGap;
-    rcDraw2.bottom = rcDraw2.top + tmText1.height;
-    rcDraw3.left = (rect.right - rect.left - tmTile2.width) / 2;
-    rcDraw3.right = rcDraw3.left + tmTile2.width;
-    rcDraw3.top = rcDraw2.bottom + lineGap;
-    rcDraw3.bottom = rcDraw3.top + tmTile2.height;
-    rcDraw4.left = (rect.right - rect.left - tmText2.width) / 2;
-    rcDraw4.right = rcDraw4.left + tmText2.width;
-    rcDraw4.top = rcDraw3.bottom + lineGap;
-    rcDraw4.bottom = rcDraw4.top + tmText2.height;
-
-    IRenderer::instance()->drawText(TITLE1, -1, rcDraw1, m_styles.unified ? 0 : 1);
-    IRenderer::instance()->drawText(TEXT1, -1, rcDraw2, 0);
-    IRenderer::instance()->drawText(TITLE2, -1, rcDraw3, m_styles.unified ? 0 : 1);
-    IRenderer::instance()->drawText(TEXT2, -1, rcDraw4, 0);
-    IRenderer::instance()->endPaint();
+    renderer->endPaint();
 
     BitBlt(hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, hMemdc, 0, 0, SRCCOPY);
+    SelectObject(hMemdc, oldBitmap);
     DeleteObject(hBitmap);
     DeleteDC(hMemdc);
     return (INT_PTR)TRUE;
+}
+
+void DisplaySettingDlg::applyPreset(int preset)
+{
+    const COLORREF backgrounds[] = {RGB(247, 243, 233), RGB(229, 239, 225), RGB(29, 33, 39)};
+    const COLORREF foregrounds[] = {RGB(56, 51, 43), RGB(42, 62, 45), RGB(216, 216, 208)};
+    m_background.color = backgrounds[preset];
+    m_background.enableImage = false;
+    m_styles.textColor = foregrounds[preset];
+    m_styles.titleColor = foregrounds[preset];
+    m_layout.borderL = m_layout.borderR = 20;
+    m_layout.borderT = m_layout.borderB = 18;
+    m_layout.charGap = 0;
+    m_layout.lineGap = 8;
+    m_layout.paragraphGap = 18;
+    m_layout.wordWrap = true;
+    m_layout.splitChapter = true;
+    m_alpha = m_textAlpha = 255;
+    CheckDlgButton(m_hWnd, IDC_CHECK_BIENABLE, BST_UNCHECKED);
+    onBackgroundImageEnable();
+    CheckDlgButton(m_hWnd, IDC_CHECK_WORDWRAP, BST_CHECKED);
+    CheckDlgButton(m_hWnd, IDC_CHECK_SPLITCHAPTER, BST_CHECKED);
+    SetDlgItemInt(m_hWnd, IDC_EDIT_CHARGAP, m_layout.charGap, FALSE);
+    SetDlgItemInt(m_hWnd, IDC_EDIT_LINEGAP, m_layout.lineGap, FALSE);
+    SetDlgItemInt(m_hWnd, IDC_EDIT_PARAGRAPHGAP, m_layout.paragraphGap, FALSE);
+    SetDlgItemTextW(m_hWnd, IDC_EDIT_BORDER, getBorder({20, 18, 20, 18}).c_str());
+    SetDlgItemTextW(m_hWnd, IDC_STATIC_RGB, Utils::toRGB(m_background.color).c_str());
+    bindSliderEditPair(IDC_SLIDER_BGALPHA, IDC_EDIT_BGALPHA, m_alpha, MIN_ALPHA, MAX_ALPHA);
+    bindSliderEditPair(IDC_SLIDER_TEXTALPHA, IDC_EDIT_TEXTALPHA, m_textAlpha, MIN_TEXT_ALPHA, MAX_TEXT_ALPHA);
+    updatePreview();
 }
 
 void DisplaySettingDlg::updatePreview()
@@ -303,7 +311,10 @@ std::wstring DisplaySettingDlg::getBorder(const RECT &rect)
 
 bool DisplaySettingDlg::getBorder(const wchar_t *str, RECT &rect, bool tips)
 {
-    if (swscanf(str, L"%d,%d,%d,%d", &rect.left, &rect.top, &rect.right, &rect.bottom) == 4)
+    wchar_t trailing = 0;
+    if (swscanf(str, L"%ld,%ld,%ld,%ld %lc", &rect.left, &rect.top, &rect.right, &rect.bottom, &trailing) == 4
+        && rect.left >= 0 && rect.top >= 0 && rect.right >= 0 && rect.bottom >= 0
+        && rect.left <= 240 && rect.top <= 240 && rect.right <= 240 && rect.bottom <= 240)
     {
         return true;
     }
@@ -433,7 +444,7 @@ bool DisplaySettingDlg::loadData()
 {
     std::wstring borderText = getDlgItemTextW(IDC_EDIT_BORDER);
     RECT borderRect;
-    if (!getBorder(borderText.c_str(), borderRect, true))
+    if (!getBorder(borderText.c_str(), borderRect, false))
     {
         messageBox(IDS_INVALID_INBORDER, IDS_WARN, MB_OK | MB_ICONWARNING);
         SetFocus(GetDlgItem(m_hWnd, IDC_EDIT_BORDER));
@@ -446,27 +457,28 @@ bool DisplaySettingDlg::loadData()
     m_layout.borderR = borderRect.right;
     m_layout.borderB = borderRect.bottom;
     BOOL result = FALSE;
-    m_layout.charGap = GetDlgItemInt(m_hWnd, IDC_EDIT_CHARGAP, &result, FALSE);
-    if (!result)
+    m_layout.charGap = GetDlgItemInt(m_hWnd, IDC_EDIT_CHARGAP, &result, TRUE);
+    if (!result || m_layout.charGap < 0 || m_layout.charGap > 64)
     {
         messageBox(IDS_INVALID_CHARGAP, IDS_WARN, MB_OK|MB_ICONWARNING);
         SetFocus(GetDlgItem(m_hWnd, IDC_EDIT_CHARGAP));
         return false;
     }
-    m_layout.lineGap = GetDlgItemInt(m_hWnd, IDC_EDIT_LINEGAP, &result, FALSE);
-    if (!result)
+    m_layout.lineGap = GetDlgItemInt(m_hWnd, IDC_EDIT_LINEGAP, &result, TRUE);
+    if (!result || m_layout.lineGap < 0 || m_layout.lineGap > 128)
     {
         messageBox(IDS_INVALID_LINEGAP, IDS_WARN, MB_OK|MB_ICONWARNING);
         SetFocus(GetDlgItem(m_hWnd, IDC_EDIT_LINEGAP));
         return false;
     }
-    m_layout.paragraphGap = GetDlgItemInt(m_hWnd, IDC_EDIT_PARAGRAPHGAP, &result, FALSE);
-    if (!result)
+    m_layout.paragraphGap = GetDlgItemInt(m_hWnd, IDC_EDIT_PARAGRAPHGAP, &result, TRUE);
+    if (!result || m_layout.paragraphGap < 0 || m_layout.paragraphGap > 256)
     {
         messageBox(IDS_INVALID_PARAGRAPHGAP, IDS_WARN, MB_OK|MB_ICONWARNING);
         SetFocus(GetDlgItem(m_hWnd, IDC_EDIT_PARAGRAPHGAP));
         return false;
     }
+    m_layout.epubImages = IsDlgButtonChecked(m_hWnd, IDC_CHECK_EPUB_IMAGES) == BST_CHECKED;
     m_layout.indent = IsDlgButtonChecked(m_hWnd, IDC_CHECK_INDENT) == BST_CHECKED;
     m_layout.noBlansLine = IsDlgButtonChecked(m_hWnd, IDC_CHECK_BLANKLINES) == BST_CHECKED;
     m_layout.wordWrap = IsDlgButtonChecked(m_hWnd, IDC_CHECK_WORDWRAP) == BST_CHECKED;
@@ -519,8 +531,29 @@ LRESULT DisplaySettingDlg::handleMessage(UINT message, WPARAM wParam, LPARAM lPa
         case IDCANCEL:
             EndDialog(m_hWnd, LOWORD(wParam));
             return (INT_PTR)TRUE;
-        case IDC_CHECK_SAME:
+        case IDC_CHECK_SAMETEXTSTYLE:
             return onUnifiedTextStyle();
+        case IDC_PRESET_PAPER: applyPreset(0); return TRUE;
+        case IDC_PRESET_GREEN: applyPreset(1); return TRUE;
+        case IDC_PRESET_NIGHT: applyPreset(2); return TRUE;
+        case IDC_CHECK_WORDWRAP:
+        case IDC_CHECK_INDENT:
+        case IDC_CHECK_BLANKLINES:
+        case IDC_CHECK_SPLITCHAPTER:
+        case IDC_CHECK_EPUB_IMAGES:
+            m_layout.wordWrap = IsDlgButtonChecked(m_hWnd, IDC_CHECK_WORDWRAP) == BST_CHECKED;
+            m_layout.indent = IsDlgButtonChecked(m_hWnd, IDC_CHECK_INDENT) == BST_CHECKED;
+            m_layout.noBlansLine = IsDlgButtonChecked(m_hWnd, IDC_CHECK_BLANKLINES) == BST_CHECKED;
+            m_layout.splitChapter = IsDlgButtonChecked(m_hWnd, IDC_CHECK_SPLITCHAPTER) == BST_CHECKED;
+            m_layout.epubImages = IsDlgButtonChecked(m_hWnd, IDC_CHECK_EPUB_IMAGES) == BST_CHECKED;
+            updatePreview(); return TRUE;
+        case IDC_COMBO_ALIGNMENT:
+            if (HIWORD(wParam) == CBN_SELCHANGE)
+            {
+                m_layout.alignment = (Alignment)SendDlgItemMessage(m_hWnd, IDC_COMBO_ALIGNMENT, CB_GETCURSEL, 0, 0);
+                updatePreview();
+            }
+            break;
         case IDC_BUTTON_TEXT_FONT:
             return onTextFont();
         case IDC_BUTTON_CHAPTER_FONT:
@@ -558,21 +591,21 @@ LRESULT DisplaySettingDlg::handleMessage(UINT message, WPARAM wParam, LPARAM lPa
         case IDC_EDIT_LINEGAP:
             if (HIWORD(wParam) == EN_CHANGE)
             {
-                m_layout.lineGap = GetDlgItemInt(m_hWnd, IDC_EDIT_LINEGAP, NULL, FALSE);
+                m_layout.lineGap = min(128, (int)GetDlgItemInt(m_hWnd, IDC_EDIT_LINEGAP, NULL, FALSE));
                 updatePreview();
             }
             break;
         case IDC_EDIT_CHARGAP:
             if (HIWORD(wParam) == EN_CHANGE)
             {
-                m_layout.charGap = GetDlgItemInt(m_hWnd, IDC_EDIT_CHARGAP, NULL, FALSE);
+                m_layout.charGap = min(64, (int)GetDlgItemInt(m_hWnd, IDC_EDIT_CHARGAP, NULL, FALSE));
                 updatePreview();
             }
             break;
         case IDC_EDIT_PARAGRAPHGAP:
             if (HIWORD(wParam) == EN_CHANGE)
             {
-                m_layout.paragraphGap = GetDlgItemInt(m_hWnd, IDC_EDIT_PARAGRAPHGAP, NULL, FALSE);
+                m_layout.paragraphGap = min(256, (int)GetDlgItemInt(m_hWnd, IDC_EDIT_PARAGRAPHGAP, NULL, FALSE));
                 updatePreview();
             }
             break;

@@ -76,6 +76,7 @@ struct LayoutConfig
     bool noBlansLine;
     bool wordWrap;
     bool splitChapter;
+    bool epubImages = true;
     Alignment alignment;
 
     bool operator==(const LayoutConfig& rhs) const
@@ -91,6 +92,7 @@ struct LayoutConfig
             noBlansLine == rhs.noBlansLine &&
             wordWrap == rhs.wordWrap &&
             splitChapter == rhs.splitChapter &&
+            epubImages == rhs.epubImages &&
             alignment == rhs.alignment;
     }
     bool operator!=(const LayoutConfig& rhs) const
@@ -114,6 +116,7 @@ struct CharInfo
     int tsIdx; // index for text style
     int w;
     int h;
+    int length = 1; // UTF-16 units in this glyph cluster
 };
 
 struct LineInfo

@@ -179,6 +179,7 @@
     <ClInclude Include="..\3rdparty\cjson\inc\cJSON_XPath.h" />
     <ClInclude Include="books\BookBase.h" />
     <ClInclude Include="books\BookEpub.h" />
+    <ClInclude Include="books\EpubContent.h" />
     <ClInclude Include="books\BookMobi.h" />
     <ClInclude Include="books\BookOnline.h" />
     <ClInclude Include="books\BookText.h" />
@@ -195,6 +196,7 @@
     <ClInclude Include="platform\resource.h" />
     <ClInclude Include="platform\targetver.h" />
     <ClInclude Include="renderer\IRenderer.h" />
+    <ClInclude Include="renderer\ImageFit.h" />
     <ClInclude Include="renderer\RendererBase.h" />
     <ClInclude Include="renderer\RendererD2D.h" />
     <ClInclude Include="renderer\RendererGDIPlus.h" />

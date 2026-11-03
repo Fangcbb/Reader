@@ -1,5 +1,6 @@
 #pragma once
 #include "RendererD2D.h"
+#include "ImageFit.h"
 
 //#pragma comment(lib, "Msimg32.lib")
 //#pragma comment(lib, "d2d1.lib")
@@ -888,57 +889,11 @@ void RendererD2D::drawImage(const Image * image, const RECT & rect, bool keepRat
         return;
     }
 
-    if (keepRatio)
-    {
-        int w = rect.right - rect.left;
-        int h = rect.bottom - rect.top;
-        FLOAT bw = pBitmap->GetSize().width;
-        FLOAT bh = pBitmap->GetSize().height;
-
-        double d = static_cast<double>(w) / h;
-        double bd = static_cast<double>(bw) / bh;
-
-        int drawX = rect.left;
-        int drawY = rect.top;
-        int drawW = w;
-        int drawH = h;
-
-        if (bd > d)
-        {
-            // image is too wide
-            drawW = w;
-            drawH = static_cast<int>(drawW / bd);
-            drawY = rect.top + (h - drawH) / 2;
-        }
-        else if (bd < d)
-        {
-            // image is too high
-            drawH = h;
-            drawW = static_cast<int>(bd * drawH);
-            drawX = rect.left + (w - drawW) / 2;
-        }
-
-        D2D1_RECT_F dstRect = D2D1::RectF(
-            static_cast<FLOAT>(drawX),
-            static_cast<FLOAT>(drawY),
-            static_cast<FLOAT>(drawX + drawW),
-            static_cast<FLOAT>(drawY + drawH)
-        );
-
-        D2D1_RECT_F srcRect = D2D1::RectF(0, 0, bw, bh);
-
-        m_pRenderTarget->DrawBitmap(pBitmap, dstRect, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, srcRect);
-    }
-    else
-    {
-        D2D1_RECT_F dstRect = D2D1::RectF(
-            static_cast<FLOAT>(rect.left),
-            static_cast<FLOAT>(rect.top),
-            static_cast<FLOAT>(rect.right),
-            static_cast<FLOAT>(rect.bottom)
-        );
-        m_pRenderTarget->DrawBitmap(pBitmap, dstRect, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
-    }
+    if (rect.right <= rect.left || rect.bottom <= rect.top) return;
+    ImageFit::Rect target = {rect.left, rect.top, rect.right, rect.bottom};
+    if (keepRatio) target = ImageFit::contain(imd2d->width(), imd2d->height(), target);
+    auto dstRect = D2D1::RectF((FLOAT)target.left, (FLOAT)target.top, (FLOAT)target.right, (FLOAT)target.bottom);
+    m_pRenderTarget->DrawBitmap(pBitmap, dstRect, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
 }
 
 Image* RendererD2D::loadImageFromPath(const wchar_t* path)

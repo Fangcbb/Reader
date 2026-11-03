@@ -3,6 +3,7 @@
 #include <atomic>
 #include <functional>
 #include <mutex>
+#include <memory>
 #include <thread>
 #include <vector>
 #include "framework.h"
@@ -105,6 +106,8 @@ private:
     BookErrno         m_errno;
     PageInfo          m_pageInfo;
     TextStyles        m_styles;
+    std::unique_ptr<Image> m_pageImage;
+    const Cover*      m_pageCover = nullptr;
     int               m_width;
     int               m_height;
     std::thread       m_thread;

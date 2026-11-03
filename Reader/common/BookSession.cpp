@@ -8,6 +8,7 @@
 #include "Settings.h"
 #include "Utils.h"
 #include "Logger.h"
+#include "DpiAwareness.h"
 
 BookSession::BookSession(HWND hWnd)
     : m_hWnd(hWnd)
@@ -192,6 +193,8 @@ void BookSession::close()
 
     if (m_thread.joinable()) m_thread.join();
 
+    m_pageImage.reset();
+    m_pageCover = nullptr;
     m_layout->setSource(nullptr);
 
     if (m_book)
@@ -620,17 +623,28 @@ void BookSession::drawPage(HDC hdc, const RECT& rect)
     m_pageInfo = m_layout->layout(m_book->index(), m_width, m_height);
     if (!m_pageInfo.empty() && m_book->isCover(m_pageInfo.start))
     {
-        auto* cover = m_book->cover();
+        auto* cover = m_book->coverAt(m_pageInfo.start);
         if (cover)
         {
-            auto image = IRenderer::instance()->loadImageFromStream((BYTE*)cover->data, cover->size);
-            if (image)
+            if (m_pageCover != cover)
             {
-                IRenderer::instance()->drawImage(image, rect, true);
-                delete image;
+                m_pageCover = cover;
+                m_pageImage.reset(IRenderer::instance()->loadImageFromStream((BYTE*)cover->data, cover->size));
+            }
+            if (m_pageImage)
+            {
+                int right = 0, bottom = 0;
+                DpiAwareness::instance().logicalToPhysical(Settings::instance().data().layout.borderR, right);
+                DpiAwareness::instance().logicalToPhysical(Settings::instance().data().layout.borderB, bottom);
+                RECT imageRect = {m_pageInfo.x, m_pageInfo.y, m_width - right, m_height - bottom};
+                if (imageRect.right <= imageRect.left || imageRect.bottom <= imageRect.top) imageRect = rect;
+                IRenderer::instance()->drawImage(m_pageImage.get(), imageRect, true);
                 return;
             }
         }
+        RECT messageRect = {16, 16, m_width - 16, m_height - 16};
+        IRenderer::instance()->drawText(L"图片暂不可显示，请翻页继续阅读", -1, messageRect, 0);
+        return;
     }
 
     int x;
@@ -647,12 +661,12 @@ void BookSession::drawPage(HDC hdc, const RECT& rect)
             rc.top = y + line.h - c.h;
             rc.right = rc.left + c.w;
             // If the next character has the same style and is contiguous, extend the background rectangle to include cGap
-            if (i + 1 < count && line.chars[i + 1].tsIdx == c.tsIdx && line.chars[i + 1].index == c.index + 1)
+            if (i + 1 < count && line.chars[i + 1].tsIdx == c.tsIdx && line.chars[i + 1].index == c.index + c.length)
             {
                 rc.right += m_pageInfo.cGap;
             }
             rc.bottom = rc.top + c.h;
-            IRenderer::instance()->drawText(m_book->text() + c.index, 1, rc, c.tsIdx);
+            IRenderer::instance()->drawText(m_book->text() + c.index, c.length, rc, c.tsIdx);
             x += c.w + m_pageInfo.cGap;
         }
         y += line.h + line.gap;

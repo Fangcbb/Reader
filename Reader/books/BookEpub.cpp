@@ -1,6 +1,10 @@
 #include "BookEpub.h"
 #include "miniz.h"
 #include "conv.h"
+#include "EpubContent.h"
+#include "Settings.h"
+#include <algorithm>
+#include <limits>
 
 BookEpub::BookEpub(const std::wstring& fileName)
     : BookBase(fileName)
@@ -89,6 +93,12 @@ bool BookEpub::loadBook(Files& files)
         if (!mz_zip_reader_file_stat(&zipArchive, i, &fileStat)) continue;
         if (mz_zip_reader_is_file_a_directory(&zipArchive, i)) continue; // skip directories for now
 
+        if (fileStat.m_uncomp_size == 0) continue;
+        if (fileStat.m_uncomp_size > 128 * 1024 * 1024 || files.count(fileStat.m_filename))
+        {
+            mz_zip_reader_end(&zipArchive);
+            return false;
+        }
         // create memory to save this file
         buf = (char *)malloc((size_t)fileStat.m_uncomp_size);
         if (!buf)
@@ -182,11 +192,11 @@ bool BookEpub::parseOpf(Files& files)
             manifest.mediaType = (const char*)mediaType;
             if (properties) // EPUB 3
             {
-                if (0 == xmlStrcasecmp(properties, BAD_CAST "nav"))
+                if (EpubContent::token((const char*)properties, "nav"))
                 {
                     if (m_epub->nav.empty()) m_epub->nav = manifest.href;
                 }
-                else if (0 == xmlStrcasecmp(properties, BAD_CAST "cover-image"))
+                if (EpubContent::token((const char*)properties, "cover-image"))
                 {
                     if (m_epub->cover.imageHref.empty() && xmlStrcasestr(BAD_CAST mediaType, BAD_CAST "image/"))
                         m_epub->cover.imageHref = manifest.href;
@@ -208,7 +218,7 @@ bool BookEpub::parseOpf(Files& files)
     std::vector<std::string> valueTitle;
     if (!HtmlParser::instance().parseXmlBegin(itor->second.data, itor->second.size, ctx)) return false;
     HtmlParser::instance().parseXmlNext(ctx, "//*[local-name()='item']", itemNodeParser);
-    HtmlParser::instance().parseXmlNext(ctx, "//*[local-name()='itemref']/@idref", valueIdref);
+    HtmlParser::instance().parseXmlNext(ctx, "//*[local-name()='itemref'][not(@linear='no')]/@idref", valueIdref);
     HtmlParser::instance().parseXmlNext(ctx, "//*[local-name()='spine']/@toc", valueToc);
     HtmlParser::instance().parseXmlNext(ctx, "//*[local-name()='meta'][@name='cover' or @name='Cover']/@content", valueMetaCover);
     HtmlParser::instance().parseXmlNext(ctx, "//*[local-name()='guide']/*[local-name()='reference'][@type='cover' or contains(@type, 'Cover')]/@href", valueGuideCover);
@@ -245,6 +255,12 @@ bool BookEpub::parseOpf(Files& files)
             m_epub->ncx = it->second.href;
             break;
         }
+    }
+
+    if (m_epub->ncx.empty())
+    {
+        for (const auto& item : m_epub->manifests)
+            if (item.second.mediaType == "application/x-dtbncx+xml") { m_epub->ncx = item.second.href; break; }
     }
 
     // parse cover from <meta>
@@ -329,32 +345,21 @@ bool BookEpub::parseNav(Files& files)
     Files::const_iterator itor = files.find(m_epub->nav);
     if (files.end() == itor) return true;
 
-    auto xmlDirectText = [](const xmlNode *node) -> xmlChar* {
-        if (!node) return nullptr;
-        xmlBufferPtr buffer = xmlBufferCreate();
-        xmlNodePtr cur = node->children;
-        while (cur)
-        {
-            if (cur->type == XML_TEXT_NODE || cur->type == XML_CDATA_SECTION_NODE)
-            {
-                if (cur->content) xmlBufferCat(buffer, cur->content);
-            }
-            cur = cur->next;
-        }
-        xmlChar *result = xmlStrdup(xmlBufferContent(buffer));
-        xmlBufferFree(buffer);
-        return result; // xmlFree(result)
-    };
-
-    auto itemNodeParser = [this, &xmlDirectText](const xmlNode *node) {
+    auto itemNodeParser = [this](const xmlNode *node) {
         if (!node) return;
         xmlChar* href = xmlGetProp(node, BAD_CAST "href");
-        xmlChar* text = xmlDirectText(node);
+        xmlChar* text = xmlNodeGetContent(node);
         if (href && text)
         {
             Navpoint navpoint;
             navpoint.id = "";
             navpoint.href = formatHref(m_epub->nav, (char*)href);
+            if (type() == BookType::EPUB)
+            {
+                std::string target = (char*)href;
+                size_t fragment = target.find('#');
+                if (fragment != std::string::npos) navpoint.href += "#" + decodeHref(target.substr(fragment + 1));
+            }
             navpoint.text = (char*)text;
             navpoint.order = -1;
             m_epub->navpoints.insert(std::make_pair(navpoint.href, std::move(navpoint)));
@@ -364,8 +369,8 @@ bool BookEpub::parseNav(Files& files)
     };
 
     ParserContext ctx = {0};
-    if (!HtmlParser::instance().parseXmlBegin(itor->second.data, itor->second.size, ctx)) return false;
-    HtmlParser::instance().parseXmlNext(ctx, "//*[local-name()='nav'][@*[contains(name(),'type')]='toc' or @id='toc' or @role='doc-toc']//*[local-name()='a']", itemNodeParser);
+    if (!HtmlParser::instance().parseXmlBegin(itor->second.data, itor->second.size, ctx)) return true;
+    HtmlParser::instance().parseXmlNext(ctx, "//*[local-name()='nav'][contains(concat(' ', normalize-space(@*[local-name()='type']), ' '), ' toc ') or @id='toc' or @role='doc-toc']//*[local-name()='a']", itemNodeParser);
     HtmlParser::instance().parseXmlEnd(ctx);
     return true;
 }
@@ -414,8 +419,14 @@ bool BookEpub::parseNcx(Files& files)
             Navpoint navpoint;
             if (id) navpoint.id = (const char*)id;
             navpoint.href = formatHref(m_epub->ncx, (char*)src);
+            if (type() == BookType::EPUB)
+            {
+                std::string target = (char*)src;
+                size_t fragment = target.find('#');
+                if (fragment != std::string::npos) navpoint.href += "#" + decodeHref(target.substr(fragment + 1));
+            }
             navpoint.text = (char*)text;
-            if (order) navpoint.order = atoi((const char *)order);
+            navpoint.order = order ? atoi((const char *)order) : -1;
             m_epub->navpoints.insert(std::make_pair(navpoint.href, std::move(navpoint)));
         }
         if (id)    xmlFree(id);
@@ -456,6 +467,7 @@ bool BookEpub::parseCover(Files& files)
                 return;
             }
             xmlChar* href = xmlGetProp(node, BAD_CAST "href");
+            if (!href) href = xmlGetNsProp(node, BAD_CAST "href", BAD_CAST "http://www.w3.org/1999/xlink");
             if (href)
             {
                 m_epub->cover.imageHref = formatHref(m_epub->cover.xhtmlHref ,(char*)href);;
@@ -475,16 +487,134 @@ bool BookEpub::parseCover(Files& files)
         auto itor = files.find(m_epub->cover.imageHref);
         if (files.end() == itor) return true; // not found
 
-        m_cover = (Cover*)malloc(sizeof(Cover));
-        m_cover->data = itor->second.data;
+        if (!itor->second.data || itor->second.size <= 0) return true;
+        m_cover = (Cover*)calloc(1, sizeof(Cover));
+        if (!m_cover) return false;
+        m_cover->data = (char*)malloc(itor->second.size);
+        if (!m_cover->data) { freeCover(); return false; }
+        memcpy(m_cover->data, itor->second.data, itor->second.size);
         m_cover->size = itor->second.size;
-        itor->second.data = nullptr;
-        itor->second.size = 0;
     }
     return true;
 }
 
+bool BookEpub::isTitleLine(int index) const
+{
+    if (type() != BookType::EPUB) return BookBase::isTitleLine(index);
+    for (const auto& heading : m_headingRanges)
+    {
+        if (index < heading.first) break;
+        if (index < heading.second) return true;
+    }
+    return false;
+}
+
+bool BookEpub::isCover(int index) const
+{
+    return BookBase::isCover(index) ||
+        (Settings::instance().data().layout.epubImages && m_pictures.find(index) != m_pictures.end());
+}
+
+const Cover* BookEpub::coverAt(int index) const
+{
+    auto picture = m_pictures.find(index);
+    if (picture != m_pictures.end()) return &picture->second;
+    return BookBase::isCover(index) ? m_cover : nullptr;
+}
+
 bool BookEpub::parseChapters(Files& files)
+{
+    if (type() != BookType::EPUB) return parseLegacyChapters(files);
+    m_pictureData.clear();
+    m_pictures.clear();
+    m_headingRanges.clear();
+    m_chapters.clear();
+    std::u16string text(m_cover ? 1 : 0, u'\n');
+    if (m_cover)
+    {
+        Chapter coverChapter = {};
+        coverChapter.index = 0;
+        coverChapter.title = L"封面";
+        m_chapters.push_back(coverChapter);
+    }
+    for (const auto* spine : m_epub->spines)
+    {
+        if (m_abort) return false;
+        auto file = files.find(spine->href);
+        if (file == files.end()) return false; // do not silently lose reading-order content
+        EpubContent::Document document;
+        auto acceptImage = [&](const std::string& href) {
+            auto image = files.find(href);
+            return !(m_cover && href == m_epub->cover.imageHref) && image != files.end()
+                && image->second.data && image->second.size > 0;
+        };
+        if (!EpubContent::parse(file->second.data, file->second.size, spine->href, document, acceptImage)) return false;
+        if (document.text.empty()) continue;
+        if (text.size() + document.text.size() >= (size_t)(std::numeric_limits<int>::max)()) return false;
+        const int offset = (int)text.size();
+        std::vector<Chapter> chapters;
+        for (const auto& nav : m_epub->navpoints)
+        {
+            size_t hash = nav.first.find('#');
+            if (nav.first.substr(0, hash) != spine->href) continue;
+            size_t position = 0;
+            if (hash != std::string::npos)
+            {
+                auto anchor = document.anchors.find(nav.first.substr(hash + 1));
+                if (anchor == document.anchors.end()) continue;
+                position = anchor->second;
+            }
+            if (position >= document.text.size()) continue;
+            Chapter chapter = {};
+            chapter.index = offset + (int)position;
+            auto title = EpubContent::utf16(nav.second.text);
+            chapter.title.assign(title.begin(), title.end());
+            if (!chapter.title.empty()) chapters.push_back(chapter);
+        }
+        if (chapters.empty())
+        {
+            Chapter chapter = {};
+            chapter.index = offset;
+            chapter.title.assign(document.title.begin(), document.title.end());
+            if (chapter.title.empty()) chapter.title = L"章节 " + std::to_wstring(m_chapters.size() + 1);
+            chapters.push_back(chapter);
+        }
+        std::stable_sort(chapters.begin(), chapters.end(), [](const Chapter& a, const Chapter& b) { return a.index < b.index; });
+        int last = -1;
+        for (auto& chapter : chapters)
+        {
+            if (chapter.index == last) continue;
+            last = chapter.index;
+            // Only style actual heading text, never an arbitrary TOC-label-length prefix.
+            size_t start = chapter.index - offset;
+            size_t end = document.text.find(u'\n', start);
+            if (end != std::u16string::npos && std::wstring(document.text.begin() + start, document.text.begin() + end) == chapter.title)
+                chapter.titleLineLen = (int)(end - start);
+            m_chapters.push_back(chapter);
+        }
+        for (const auto& heading : document.headings)
+            m_headingRanges.push_back({offset + (int)heading.first, offset + (int)heading.second});
+        for (const auto& picture : document.pictures)
+        {
+            const auto& image = files.find(picture.href)->second;
+            int index = offset + (int)picture.offset;
+            auto& bytes = m_pictureData[index];
+            bytes.assign(image.data, image.data + image.size);
+            m_pictures[index] = {bytes.data(), (int)bytes.size()};
+        }
+        text += document.text;
+    }
+    if (text.empty()) return false;
+    free(m_text);
+    m_text = (wchar_t*)malloc((text.size() + 1) * sizeof(wchar_t));
+    if (!m_text) return false;
+    std::copy(text.begin(), text.end(), m_text);
+    m_length = (int)text.size();
+    m_text[m_length] = 0;
+    return true;
+}
+
+bool BookEpub::parseLegacyChapters(Files& files)
 {
     struct Buffer
     {
@@ -682,9 +812,7 @@ bool BookEpub::splitHtmlByNavpoints(Files& files)
 
 std::string BookEpub::formatHref(const std::string& base, const std::string& href)
 {
-    size_t pos = href.find('#');
-    std::string path = pos == std::string::npos ? href : href.substr(0, pos);
-    return decodeHref(resolveHref(base, path));
+    return EpubContent::resolve(base, href);
 }
 
 std::string BookEpub::decodeHref(const std::string& href)
