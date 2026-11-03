@@ -221,6 +221,7 @@
     <ClInclude Include="ui\UpgradeDlg.h" />
     <ClInclude Include="ui\WebDlg.h" />
     <ClInclude Include="ui\wnds\Dialog.h" />
+    <ClInclude Include="ui\wnds\ModernUi.h" />
     <ClInclude Include="ui\wnds\IWnd.h" />
     <ClInclude Include="ui\wnds\Window.h" />
     <ClInclude Include="files\IFile.h" />
@@ -266,6 +267,7 @@
     <ClCompile Include="ui\JumpProgressDlg.cpp" />
     <ClCompile Include="ui\KeySettingDlg.cpp" />
     <ClCompile Include="ui\MainWin.cpp" />
+    <ClCompile Include="ui\MainWinModern.cpp" />
     <ClCompile Include="ui\NetworkSettingDlg.cpp" />
     <ClCompile Include="ui\OnlineSearchDlg.cpp" />
     <ClCompile Include="ui\SimpleSearchDlg.cpp" />

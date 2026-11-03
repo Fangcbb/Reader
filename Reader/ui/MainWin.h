@@ -6,6 +6,7 @@
 #include "Settings.h"
 #include "BookSession.h"
 #include "EditController.h"
+#include <map>
 
 class MainWin : public Window
 {
@@ -90,6 +91,20 @@ protected:
     LRESULT onMouseHide(UINT message, WPARAM wParam, LPARAM lParam);
 
 protected:
+    void createModernUi();
+    void layoutModernUi();
+    void paintModernFrame(HDC dc);
+    void paintModernBar(HWND window, HDC dc);
+    void showMoreMenu();
+    bool dockedNavigation() const;
+    static LRESULT CALLBACK modernBarProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
+    HWND m_header = nullptr;
+    HWND m_welcome = nullptr;
+    std::map<int, HWND> m_shellButtons;
+    bool m_navigationOpen = true;
+    bool m_syncingNavigation = false;
+    bool m_overlayNavigation = false;
+    bool m_overlayMarks = false;
     void playLoading();
     void stopLoading();
     void startAutoPage();

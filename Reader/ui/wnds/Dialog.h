@@ -1,6 +1,7 @@
 #pragma once
 #include "IWnd.h"
 #include "conv.h"
+#include "ModernUi.h"
 
 class Dialog : public IWnd
 {
@@ -100,6 +101,17 @@ private:
         if (!pThis)
         {
             return FALSE;
+        }
+        if (message == WM_INITDIALOG) ModernUi::initDialog(hDlg);
+        if (message == WM_ERASEBKGND) { ModernUi::paintDialog(hDlg, (HDC)wParam); return TRUE; }
+        if (message == WM_CTLCOLORDLG) return (INT_PTR)ModernUi::brush(false);
+        if (message == WM_CTLCOLORSTATIC || message == WM_CTLCOLORBTN)
+        {
+            HDC dc = (HDC)wParam;
+            SetTextColor(dc, IsWindowEnabled((HWND)lParam) ? ModernUi::ink() : ModernUi::muted());
+            bool card = ModernUi::inCard(hDlg, (HWND)lParam);
+            SetBkColor(dc, card ? ModernUi::surface() : ModernUi::background());
+            return (INT_PTR)ModernUi::brush(card);
         }
         return pThis->handleMessage(message, wParam, lParam);
     }

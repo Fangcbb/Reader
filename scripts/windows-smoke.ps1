@@ -11,6 +11,12 @@ public class ReaderSmokeNative {
  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
+ [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string caption);
+ [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string caption);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+ [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
+ [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hwnd, int id);
+ [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int w, int h, uint flags);
  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wp, IntPtr lp);
 }
 '@
@@ -34,6 +40,9 @@ try {
         if ($process.HasExited) { throw "Reader exited during startup: $($process.ExitCode)" }
     } while ($process.MainWindowHandle -eq 0 -and [DateTime]::UtcNow -lt $deadline)
     if ($process.MainWindowHandle -eq 0) { throw 'Reader main window was not created' }
+    $main = $process.MainWindowHandle
+    Start-Sleep -Milliseconds 300
+    Save-Window $main 'welcome'
     # Existing SingleApp protocol forwards the second process's filename via WM_COPYDATA.
     $opener = Start-Process -FilePath $exe -ArgumentList "`"$book`"" -WorkingDirectory (Split-Path $exe) -PassThru
     if (!$opener.WaitForExit(15000)) { $opener.Kill(); throw 'Open-book forwarding timed out' }
@@ -52,6 +61,43 @@ try {
     if ($process.MainWindowTitle -notlike '*第一章*') { throw "EPUB page turn failed: $($process.MainWindowTitle)" }
     "Page turned: $($process.MainWindowTitle)" | Add-Content (Join-Path $OutputPath 'smoke.txt') -Encoding utf8
     Save-Window $process.MainWindowHandle 'epub-text'
+    $definitions = Get-Content 'Reader/platform/resource.h' -Raw
+    function Resource-Id($name) {
+        $match = [regex]::Match($definitions, "(?m)^#define\s+" + [regex]::Escape($name) + "\s+(\d+)")
+        if (!$match.Success) { throw "Missing resource ID: $name" }
+        return [int]$match.Groups[1].Value
+    }
+    foreach ($dialog in @(@('IDM_DISPLAY', '阅读外观与排版', 'appearance'), @('IDM_CONFIG', '翻页与阅读行为', 'behavior'))) {
+        [void][ReaderSmokeNative]::PostMessage($main, 0x111, [IntPtr](Resource-Id $dialog[0]), [IntPtr]0)
+        $deadline = [DateTime]::UtcNow.AddSeconds(10)
+        do { Start-Sleep -Milliseconds 200; $handle = [ReaderSmokeNative]::FindWindow('#32770', $dialog[1]) } while ($handle -eq 0 -and [DateTime]::UtcNow -lt $deadline)
+        if ($handle -eq 0) { throw "Settings dialog did not open: $($dialog[0])" }
+        Start-Sleep -Milliseconds 250
+        Save-Window $handle $dialog[2]
+        [void][ReaderSmokeNative]::PostMessage($handle, 0x111, [IntPtr]2, [IntPtr]0)
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ([ReaderSmokeNative]::IsWindow($handle) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
+        if ([ReaderSmokeNative]::IsWindow($handle)) { throw 'Settings Cancel did not close the dialog' }
+    }
+    [void][ReaderSmokeNative]::SetWindowPos($main, [IntPtr]0, 80, 80, 480, 620, 4)
+    Start-Sleep -Milliseconds 300
+    Save-Window $main 'compact'
+    [void][ReaderSmokeNative]::PostMessage($main, 0x111, [IntPtr](Resource-Id 'IDM_VIEW'), [IntPtr]0)
+    Start-Sleep -Milliseconds 250
+    Save-Window $main 'compact-contents'
+    [void][ReaderSmokeNative]::PostMessage($main, 0x111, [IntPtr](Resource-Id 'IDM_VIEW'), [IntPtr]0)
+    Start-Sleep -Milliseconds 150
+    $header = [ReaderSmokeNative]::FindWindowEx($main, [IntPtr]0, 'STATIC', 'Reader 工具栏')
+    if ($header -eq 0 -or ![ReaderSmokeNative]::IsWindowVisible($header)) { throw 'Modern toolbar is missing' }
+    [void][ReaderSmokeNative]::PostMessage($main, 0x111, [IntPtr](Resource-Id 'IDM_UI_FOCUS'), [IntPtr]0)
+    Start-Sleep -Milliseconds 300
+    if ([ReaderSmokeNative]::IsWindowVisible($header)) { throw 'Toolbar remains visible in focus mode' }
+    Save-Window $main 'focus'
+    [void][ReaderSmokeNative]::PostMessage($main, 0x111, [IntPtr](Resource-Id 'IDM_UI_FOCUS'), [IntPtr]0)
+    Start-Sleep -Milliseconds 300
+    if (![ReaderSmokeNative]::IsWindowVisible($header)) { throw 'Toolbar did not return after focus mode' }
+    Save-Window $main 'restored'
+    'Modern dialogs, compact layout and focus-mode transitions passed' | Add-Content (Join-Path $OutputPath 'smoke.txt') -Encoding utf8
 } finally {
     if (!$process.HasExited) {
         [void]$process.CloseMainWindow()

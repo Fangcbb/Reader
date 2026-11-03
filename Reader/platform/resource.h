@@ -437,6 +437,16 @@
 #define IDC_PRESET_GREEN                1201
 #define IDC_PRESET_NIGHT                1202
 #define IDC_CHECK_EPUB_IMAGES           1203
+#define IDM_UI_MORE                     1300
+#define IDM_UI_PREVIOUS                 1301
+#define IDM_UI_NEXT                     1302
+#define IDM_UI_FOCUS                    1303
+#define IDC_UI_WELCOME_OPEN             1304
+#define IDM_UI_SEARCH                   1305
+#define IDM_UI_JUMP                     1306
+#define IDM_UI_ADD_MARK                 1307
+#define IDM_UI_AUTOPAGE                 1308
+#define IDM_UI_FULLSCREEN               1309
 #define IDC_STATIC                      -1
 
 // Next default values for new objects

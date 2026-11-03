@@ -15,6 +15,7 @@
 #include "AboutDlg.h"
 #include "JumpProgressDlg.h"
 #include "conv.h"
+#include "ModernUi.h"
 #ifdef ENABLE_NETWORK
 #include "https.h"
 #endif
@@ -87,6 +88,16 @@ LRESULT MainWin::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             UINT wmId = LOWORD(wParam);
             switch (LOWORD(wParam))
             {
+            case IDM_UI_MORE: showMoreMenu(); return TRUE;
+            case IDM_UI_PREVIOUS: return onPageUp(message, wParam, lParam);
+            case IDM_UI_NEXT: return onPageDown(message, wParam, lParam);
+            case IDM_UI_FOCUS: return onHideBorder(message, wParam, lParam);
+            case IDM_UI_SEARCH: return onSearch(message, wParam, lParam);
+            case IDM_UI_JUMP: return onJump(message, wParam, lParam);
+            case IDM_UI_ADD_MARK: return onAddMark(message, wParam, lParam);
+            case IDM_UI_AUTOPAGE: return onAutoPage(message, wParam, lParam);
+            case IDM_UI_FULLSCREEN: return onFullScreen(message, wParam, lParam);
+            case IDC_UI_WELCOME_OPEN:
             case IDM_OPEN:
                 result = onOpenFile(message, wParam, lParam);
                 break;
@@ -141,6 +152,13 @@ LRESULT MainWin::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
                 }
                 break;
             }
+        }
+        break;
+    case WM_GETMINMAXINFO:
+        if (DisplayMode::NORMAL == m_data.window.mode) {
+            auto info = (MINMAXINFO*)lParam;
+            info->ptMinTrackSize = {ModernUi::px(460), ModernUi::px(420)};
+            return 0;
         }
         break;
     case WM_ACTIVATE:
@@ -321,12 +339,14 @@ MainWin::KeyProc MainWin::keyProc(KeyId id)
 LRESULT MainWin::onCreate()
 {
     m_hMenu = GetMenu(m_hWnd);
-    m_hStatusBar = CreateWindow(STATUSCLASSNAME, L"Status Bar.", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
+    m_hStatusBar = CreateWindow(L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
     m_hTreeView = CreateWindow(WC_TREEVIEW, L"Tree View", /*WS_VISIBLE | */WS_CHILD /*| WS_BORDER*/ | TVS_FULLROWSELECT | TVS_SHOWSELALWAYS | TVS_INFOTIP, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
     m_hTreeMark = CreateWindow(WC_TREEVIEW, L"Tree Mark", /*WS_VISIBLE | */WS_CHILD /*| WS_BORDER*/ | TVS_FULLROWSELECT | TVS_SHOWSELALWAYS | TVS_INFOTIP, 0, 0, 0, 0, m_hWnd, nullptr, m_hInstance, nullptr);
     m_uFindMsgId = RegisterWindowMessage(FINDMSGSTRING);
     m_session = new BookSession(m_hWnd);
     Settings::instance().setHwnd(m_hWnd);
+    createModernUi();
+    layoutModernUi();
     updateTreeViewFont();
     return TRUE;
 }
@@ -336,6 +356,7 @@ LRESULT MainWin::onDestroy()
     closeFindDialog();
     registerHotKey(false);
     minToTray(false);
+    if (m_hMenu) { DestroyMenu(m_hMenu); m_hMenu = nullptr; }
     PostQuitMessage(0);
     return TRUE;
 }
@@ -344,6 +365,15 @@ LRESULT MainWin::onPaint(HDC hdc)
 {
     BYTE alpha = hdc ? 0xff : m_data.window.alpha;
     RECT rcPaint = drawTextRect();
+    if (rcPaint.right <= rcPaint.left || rcPaint.bottom <= rcPaint.top) return TRUE;
+    int saved = 0;
+    if (hdc && DisplayMode::NORMAL == m_data.window.mode) {
+        paintModernFrame(hdc);
+        saved = SaveDC(hdc);
+        HRGN clip = CreateRoundRectRgn(rcPaint.left, rcPaint.top, rcPaint.right + 1, rcPaint.bottom + 1, ModernUi::px(14), ModernUi::px(14));
+        ExtSelectClipRgn(hdc, clip, RGN_AND); DeleteObject(clip);
+    }
+    RECT canvas = {0, 0, rcPaint.right - rcPaint.left, rcPaint.bottom - rcPaint.top};
 
     IRenderer::instance()->beginPaint(m_hWnd, hdc, rcPaint, m_session->styles());
 
@@ -351,11 +381,11 @@ LRESULT MainWin::onPaint(HDC hdc)
     Image* imgBackground = loadBgImage(rcPaint.right - rcPaint.left, rcPaint.bottom - rcPaint.top, alpha);
     if (imgBackground)
     {
-        IRenderer::instance()->drawImage(imgBackground, rcPaint);
+        IRenderer::instance()->drawImage(imgBackground, canvas);
     }
     else
     {
-        IRenderer::instance()->fillRect(alpha << 24 | m_data.background.color, rcPaint);
+        IRenderer::instance()->fillRect(alpha << 24 | m_data.background.color, canvas);
     }
 
     if (m_session->isLoading())
@@ -384,10 +414,11 @@ LRESULT MainWin::onPaint(HDC hdc)
     }
     else
     {
-        m_session->drawPage(hdc, rcPaint);
+        m_session->drawPage(hdc, canvas);
     }
 
     IRenderer::instance()->endPaint();
+    if (saved) RestoreDC(hdc, saved);
 
     updateTitle();
     updateStatusBar();
@@ -482,7 +513,7 @@ LRESULT MainWin::onClose(UINT message, WPARAM wParam, LPARAM lParam)
 
 LRESULT MainWin::onSize(UINT message, WPARAM wParam, LPARAM lParam)
 {
-    SendMessage(m_hStatusBar, WM_SIZE, wParam, lParam);
+    layoutModernUi();
     if (m_hEditCtrl && m_hEditCtrl->isEditing()) m_hEditCtrl->updateLayout();
     if (SIZE_RESTORED == wParam)
     {
@@ -518,7 +549,7 @@ LRESULT MainWin::onNotify(UINT message, WPARAM wParam, LPARAM lParam)
     case TVN_SELCHANGED:
         if (pnmh->hwndFrom == m_hTreeView)
         {
-            if (IsWindowVisible(m_hTreeView))
+            if (IsWindowVisible(m_hTreeView) && !m_syncingNavigation)
             {
                 HTREEITEM selected = TreeView_GetSelection(m_hTreeView);
                 if (selected)
@@ -528,7 +559,7 @@ LRESULT MainWin::onNotify(UINT message, WPARAM wParam, LPARAM lParam)
                     item.hItem = selected;
                     TreeView_GetItem(m_hTreeView, &item);
                     m_session->seekChapter((int)item.lParam);
-                    PostMessage(m_hWnd, WM_COMMAND, IDM_VIEW, NULL);
+                    if (!dockedNavigation()) PostMessage(m_hWnd, WM_COMMAND, IDM_VIEW, NULL);
                 }
             }
         }
@@ -662,11 +693,12 @@ LRESULT MainWin::onMouseDown(UINT message, WPARAM wParam, LPARAM lParam)
 {
     auto hideTreeView = [this](HWND tv, int pos)
         {
-            if (IsWindowVisible(tv))
+            if (IsWindowVisible(tv) && !(tv == m_hTreeView && dockedNavigation()))
             {
                 ShowWindow(tv, SW_HIDE);
+                m_overlayNavigation = m_overlayMarks = false;
                 resumeAutoPage();
-                RECT rc;
+                RECT rc = {};
                 POINT pt;
                 GetCursorPos(&pt);
                 GetMenuItemRect(m_hWnd, GetMenu(m_hWnd), pos, &rc);
@@ -688,6 +720,12 @@ LRESULT MainWin::onMouseDown(UINT message, WPARAM wParam, LPARAM lParam)
             return FALSE;
         };
 
+    if (DisplayMode::NORMAL == m_data.window.mode)
+    {
+        POINT position; GetCursorPos(&position); ScreenToClient(m_hWnd, &position);
+        RECT reading = drawTextRect();
+        if (!PtInRect(&reading, position)) return TRUE;
+    }
     switch (message)
     {
     case WM_LBUTTONDOWN:
@@ -702,15 +740,14 @@ LRESULT MainWin::onMouseDown(UINT message, WPARAM wParam, LPARAM lParam)
             GetCursorPos(&pt);
             ScreenToClient(m_hWnd, &pt);
             RECT rc = drawTextRect();
-            rc.left = rc.right / 3 * 2;
+            rc.left += (rc.right - rc.left) / 3 * 2;
             if (PtInRect(&rc, pt))
             {
                 return onPageDown(message, wParam, lParam);
             }
             else
             {
-                rc.left = 0;
-                rc.right = rc.right / 3;
+                rc.right = rc.left + (rc.right - rc.left) / 3;
                 if (PtInRect(&rc, pt))
                 {
                     return onPageUp(message, wParam, lParam);
@@ -1207,65 +1244,25 @@ LRESULT MainWin::onClear(UINT message, WPARAM wParam, LPARAM lParam)
 
 LRESULT MainWin::onView(UINT message, WPARAM wParam, LPARAM lParam)
 {
-    if (IsWindowVisible(m_hTreeView))
-    {
-        ShowWindow(m_hTreeView, SW_HIDE);
-        resumeAutoPage();
-    }
-    else
-    {
-        if (m_session->isValid())
-        {
-            if (m_session->book()->chapterCount() == 0) return TRUE;
-            int index = m_session->book()->curChapterIndex();
-            if (index == -1) return TRUE;
-
-            HTREEITEM hti = TreeView_GetRoot(m_hTreeView);
-            do
-            {
-                TVITEM tvi = { 0 };
-                tvi.mask = TVIF_PARAM;
-                tvi.hItem = hti;
-                TreeView_GetItem(m_hTreeView, &tvi);
-                if (tvi.lParam == index)
-                {
-                    TreeView_EnsureVisible(m_hTreeView, hti);
-                    TreeView_SelectItem(m_hTreeView, hti);
-                    break;
-                }
-                hti = TreeView_GetNextSibling(m_hTreeView, hti);
-            } while (hti);
-
-            RECT rc = drawTextRect();
-            SetWindowPos(m_hTreeView, NULL, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_SHOWWINDOW);
-            SetFocus(m_hTreeView);
-            pauseAutoPage();
-        }
-    }
+    if (!m_session->isValid()) return TRUE;
+    RECT client; GetClientRect(m_hWnd, &client);
+    if (DisplayMode::NORMAL == m_data.window.mode && client.right >= ModernUi::px(760)) m_navigationOpen = !m_navigationOpen;
+    else m_overlayNavigation = !m_overlayNavigation;
+    m_overlayMarks = false;
+    layoutModernUi();
+    if (IsWindowVisible(m_hTreeView)) SetFocus(m_hTreeView);
+    else { SetFocus(m_hWnd); resumeAutoPage(); }
     return TRUE;
 }
 
 LRESULT MainWin::onMark(UINT message, WPARAM wParam, LPARAM lParam)
 {
-    if (IsWindowVisible(m_hTreeMark))
-    {
-        ShowWindow(m_hTreeMark, SW_HIDE);
-        resumeAutoPage();
-    }
-    else
-    {
-        if (m_session->isValid())
-        {
-            if (m_session->marks().empty())
-            {
-                return TRUE;
-            }
-            RECT rc = drawTextRect();
-            SetWindowPos(m_hTreeMark, NULL, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_SHOWWINDOW);
-            SetFocus(m_hTreeMark);
-            pauseAutoPage();
-        }
-    }
+    if (!m_session->isValid() || m_session->marks().empty()) return TRUE;
+    m_overlayMarks = !m_overlayMarks;
+    m_overlayNavigation = false;
+    layoutModernUi();
+    if (m_overlayMarks) { SetFocus(m_hTreeMark); pauseAutoPage(); }
+    else { SetFocus(m_hWnd); resumeAutoPage(); }
     return TRUE;
 }
 
@@ -1382,6 +1379,7 @@ LRESULT MainWin::onBookStateChanged(UINT message, WPARAM wParam, LPARAM lParam)
     default:
         break;
     }
+    layoutModernUi();
     return TRUE;
 }
 
@@ -1476,6 +1474,7 @@ LRESULT MainWin::onUpdateChapters(UINT message, WPARAM wParam, LPARAM lParam)
             hPrev = (HTREEITEM)SendMessage(m_hTreeView, TVM_INSERTITEM, 0, (LPARAM)&tvins);
         }
     }
+    layoutModernUi();
     return TRUE;
 }
 
@@ -2122,14 +2121,14 @@ void MainWin::switchDisplayMode(DisplayMode mode)
     SetWindowLongPtr(m_hWnd, GWL_EXSTYLE, (DWORD)GetWindowLongPtr(m_hWnd, GWL_EXSTYLE) & (~WS_EX_LAYERED));
     if (DisplayMode::NORMAL == mode)
     {
-        m_data.window.style = WS_OVERLAPPEDWINDOW;
+        m_data.window.style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
         m_data.window.exStyle = (DWORD)GetWindowLongPtr(m_hWnd, GWL_EXSTYLE) | WS_EX_LAYERED;
         m_data.window.mode = DisplayMode::NORMAL;
 
         SetWindowLongPtr(m_hWnd, GWL_STYLE, m_data.window.style);
         SetWindowLongPtr(m_hWnd, GWL_EXSTYLE, m_data.window.exStyle);
         ShowWindow(m_hStatusBar, SW_SHOW);
-        SetMenu(m_hWnd, m_hMenu);
+        SetMenu(m_hWnd, nullptr);
         SetLayeredWindowAttributes(m_hWnd, 0, m_data.window.alpha < MIN_LAYERED_ALPHA ? MIN_LAYERED_ALPHA : m_data.window.alpha, LWA_ALPHA);
         SetWindowPlacement(m_hWnd, &m_data.window.placement);
     }
@@ -2161,6 +2160,7 @@ void MainWin::switchDisplayMode(DisplayMode mode)
         SetMenu(m_hWnd, NULL);
         SetWindowPos(m_hWnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top, SWP_NOREDRAW | SWP_NOACTIVATE | SWP_NOCOPYBITS);
     }
+    layoutModernUi();
     redrawWindow();
     m_isSwitching = false;
     SendMessage(m_hWnd, WM_SETREDRAW, TRUE, 0);
@@ -2173,9 +2173,10 @@ RECT MainWin::drawTextRect()
     GetClientRect(m_hWnd, &rc);
     if (DisplayMode::NORMAL == m_data.window.mode)
     {
-        RECT rcStatus;
-        GetWindowRect(m_hStatusBar, &rcStatus);
-        rc.bottom -= rcStatus.bottom - rcStatus.top;
+        rc.top = ModernUi::px(88);
+        rc.bottom -= ModernUi::px(72);
+        rc.left = ModernUi::px(20) + (dockedNavigation() ? ModernUi::px(248) : 0);
+        rc.right -= ModernUi::px(20);
     }
     return rc;
 }
@@ -2186,9 +2187,12 @@ RECT MainWin::calcNormalRect()
     {
         RECT rcWin;
         GetClientRect(m_hWnd, &rcWin);
-        RECT rcStatus;
-        GetWindowRect(m_hStatusBar, &rcStatus);
-        rcWin.bottom += rcStatus.bottom - rcStatus.top;
+        bool sidebar = m_navigationOpen && m_session->isValid() && m_session->book()->chapterCount() > 0
+            && (m_data.window.placement.rcNormalPosition.right - m_data.window.placement.rcNormalPosition.left >= ModernUi::px(760));
+        rcWin.left -= ModernUi::px(20) + (sidebar ? ModernUi::px(248) : 0);
+        rcWin.top -= ModernUi::px(88);
+        rcWin.right += ModernUi::px(20);
+        rcWin.bottom += ModernUi::px(72);
         AdjustWindowRectEx(&rcWin, WS_OVERLAPPEDWINDOW, FALSE, (DWORD)GetWindowLongPtr(m_hWnd, GWL_EXSTYLE) | WS_EX_LAYERED);
         rcWin.top -= menuHeight(rcWin.right - rcWin.left);
         ClientToScreen(m_hWnd, reinterpret_cast<POINT *>(&rcWin.left));
@@ -2218,44 +2222,7 @@ RECT MainWin::calcBorderlessRect()
 
 int MainWin::menuHeight(int width)
 {
-    if (!m_hMenu)
-    {
-        return GetSystemMetrics(SM_CYMENU);
-    }
-
-    MENUBARINFO mbi;
-    mbi.cbSize = sizeof(mbi);
-    if (GetMenuBarInfo(m_hWnd, OBJID_MENU, 0, &mbi))
-    {
-        return mbi.rcBar.bottom - mbi.rcBar.top;
-    }
-
-    // this is not a good way to get menu height, but it easily works
-    // "dummy window" is bebetter way to get menu height, SetMenu(m_hDummy, m_hMenu)
-    width = max(GetSystemMetrics(SM_CXMINTRACK), width);
-    int itemCount = GetMenuItemCount(m_hMenu);
-    if (itemCount <= 0)
-    {
-        return GetSystemMetrics(SM_CYMENU);
-    }
-
-    RECT rcItem;
-    int h = 0;
-    int w = 0;
-    for (int i=0; i<itemCount; i++)
-    {
-        GetMenuItemRect(m_hWnd, m_hMenu, i, &rcItem);
-        if (w + rcItem.right-rcItem.left > width && w > 0)
-        {
-            h += rcItem.bottom - rcItem.top;
-            w = rcItem.right-rcItem.left;
-        }
-        else
-        {
-            w += rcItem.right-rcItem.left;
-        }
-    }
-    return h + GetSystemMetrics(SM_CYMENU);
+    return 0;
 }
 
 void MainWin::initHttps()
@@ -2383,7 +2350,31 @@ void MainWin::updateStatusBar()
             text = L"";
         }
     }
-    SendMessage(m_hStatusBar, SB_SETTEXT, (WPARAM)0, (LPARAM)text.c_str());
+    if (m_session->isValid() && dockedNavigation())
+    {
+        int current = m_session->book()->curChapterIndex();
+        HTREEITEM selected = TreeView_GetSelection(m_hTreeView);
+        TVITEM item = {}; item.mask = TVIF_PARAM; item.hItem = selected;
+        if (!selected || !TreeView_GetItem(m_hTreeView, &item) || item.lParam != current)
+        {
+            for (HTREEITEM entry = TreeView_GetRoot(m_hTreeView); entry; entry = TreeView_GetNextSibling(m_hTreeView, entry))
+            {
+                item.hItem = entry;
+                if (TreeView_GetItem(m_hTreeView, &item) && item.lParam == current)
+                {
+                    m_syncingNavigation = true;
+                    TreeView_SelectItem(m_hTreeView, entry);
+                    TreeView_EnsureVisible(m_hTreeView, entry);
+                    m_syncingNavigation = false;
+                    break;
+                }
+            }
+        }
+    }
+    if (text.empty()) text = L"选择一本书，开始今天的阅读";
+    if (ModernUi::caption(m_hStatusBar) != text) SetWindowTextW(m_hStatusBar, text.c_str());
+    InvalidateRect(m_hStatusBar, nullptr, FALSE);
+    InvalidateRect(m_header, nullptr, FALSE);
 }
 
 void MainWin::updateTreeViewFont()
@@ -2391,9 +2382,9 @@ void MainWin::updateTreeViewFont()
     // Apply palette even when the font itself is unchanged.
     for (HWND tree : {m_hTreeView, m_hTreeMark})
     {
-        TreeView_SetBkColor(tree, m_data.background.color);
-        TreeView_SetTextColor(tree, m_data.styles.textColor);
-        TreeView_SetLineColor(tree, m_data.styles.textColor);
+        TreeView_SetBkColor(tree, ModernUi::surface());
+        TreeView_SetTextColor(tree, ModernUi::ink());
+        TreeView_SetLineColor(tree, ModernUi::line());
         SendMessage(tree, TVM_SETINDENT, 16, 0);
     }
     static HFONT curHFont = nullptr;
@@ -2423,7 +2414,7 @@ void MainWin::updateTreeViewFont()
     }
 
     if (memcmp(&curFont, &newFont, sizeof(LOGFONTW)) == 0) return;
-    if (iMenuHeight == 0) iMenuHeight = 20;
+    iMenuHeight = max(ModernUi::px(34), iMenuHeight);
 
     HFONT newHFont = CreateFontIndirectW(&newFont);
     if (!newHFont) return;
