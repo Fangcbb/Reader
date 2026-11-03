@@ -138,12 +138,34 @@ try {
     }
     if ($savedConfiguration.readingPresets.Count -ne 1 -or $savedConfiguration.readingPresets[0].name -ne '论文排版') { throw 'Reading preset was not persisted' }
     $log.Add('PASS: reading background, text styles and layout are unchanged in the saved profile.')
+    # Change the active reading style while keeping the stored preset intact.
+    # Applying it must restore actual values, not merely close the dialog.
+    $savedConfiguration.background.color = 1971210
+    $savedConfiguration.styles.textFont.lfHeight = -22
+    $savedConfiguration.styles.textColor = 15790320
+    $savedConfiguration.layout.lineGap = 21
+    $savedConfiguration | ConvertTo-Json -Depth 50 | Set-Content $profilePath -Encoding utf8 -Force
     Start-Reader
+    Command $script:main (Id 'IDM_READING_PRESETS')
+    $deadline=[DateTime]::UtcNow.AddSeconds(5)
+    do { Start-Sleep -Milliseconds 100; $presets=[UiThemeNative]::FindWindow('#32770','阅读预设与场景') } while ($presets -eq 0 -and [DateTime]::UtcNow -lt $deadline)
+    if ($presets -eq 0) { throw 'Persisted preset manager did not reopen' }
+    $list=[UiThemeNative]::GetDlgItem($presets,(Id 'IDC_PRESETS_LIST'))
+    [void][UiThemeNative]::Number($list,0x186,[IntPtr]0,[IntPtr]0)
+    Command $presets ((Id 'IDC_PRESETS_LIST') -bor 65536)
+    Command $presets 1; Wait-Closed $presets
+    Start-Sleep -Milliseconds 300
     Save-Capture $script:main 'ui-theme-dark-restarted'
     $dialog=Open-Theme
     if ([UiThemeNative]::Text([UiThemeNative]::GetDlgItem($dialog,(Id 'IDC_UI_DARK_BG'))) -notlike '*#0C121C*') { throw 'Custom dark color did not survive restart' }
     Command $dialog 2;Wait-Closed $dialog
     $log.Add('PASS: dark mode and custom colors survived restart.')
+    Stop-Reader
+    $restoredReading=Get-Content $profilePath -Raw|ConvertFrom-Json
+    foreach ($name in 'background','styles','layout') {
+        if (($restoredReading.$name|ConvertTo-Json -Depth 30 -Compress) -ne $reading[$name]) { throw "Preset failed to restore changed reading $name" }
+    }
+    $log.Add('PASS: persisted preset restored changed font size, text color, background and line spacing after restart.')
     $log | Set-Content (Join-Path $OutputPath 'ui-theme-tests.txt') -Encoding utf8
     $log | Write-Output
 } catch {
